@@ -5,7 +5,6 @@
 #include "collisioninfo.h"
 #include "engine/lara/abstractstatehandler.h"
 #include "engine/items/itemnode.h"
-#include <chrono>
 #include "cameracontroller.h"
 
 
@@ -27,43 +26,38 @@ namespace engine
         using LaraStateId = loader::LaraStateId;
 
     private:
-        // Lara's vars
-        core::InterpolatedValue<float> m_health{1000.0f};
-        //! @brief Additional rotation in AU per TR Engine Frame
-        core::InterpolatedValue<core::Angle> m_yRotationSpeed{0_deg};
+        int m_health{core::LaraHealth};
+        //! @brief Additional rotation per TR Engine Frame
+        core::Angle m_yRotationSpeed{0_deg};
         int m_fallSpeedOverride = 0;
         core::Angle m_movementAngle{0};
-        core::InterpolatedValue<float> m_air{1800.0f};
+        int m_air{core::LaraAir};
         core::Angle m_currentSlideAngle{0};
 
         int m_handStatus = 0;
-        std::chrono::microseconds m_uvAnimTime{0};
+        //! @todo Move this to the Level.
+        int m_uvAnimTime{0};
 
         UnderwaterState m_underwaterState = UnderwaterState::OnLand;
-        std::unique_ptr<lara::AbstractStateHandler> m_currentStateHandler = nullptr;
-
-        bool m_handlingFrame = false;
 
     public:
         LaraNode(const gsl::not_null<level::Level*>& level,
                  const std::string& name,
                  const gsl::not_null<const loader::Room*>& room,
                  const core::Angle& angle,
-                 const core::ExactTRCoordinates& position,
+                 const core::TRCoordinates& position,
                  const floordata::ActivationState& activationState,
                  int16_t darkness,
                  const loader::AnimatedModel& animatedModel)
-                : ItemNode( level, name, room, angle, position, activationState, false, SaveHitpoints | SaveFlags | SavePosition | NonLot, darkness, animatedModel )
+            : ItemNode(level, name, room, angle, position, activationState, false, SaveHitpoints | SaveFlags | SavePosition | NonLot, darkness, animatedModel)
         {
-            setAnimIdGlobal( loader::AnimationId::STAY_IDLE );
-            setTargetState( loader::LaraStateId::Stop );
-            setMovementAngle( getRotation().Y );
+            setAnimIdGlobal(loader::AnimationId::STAY_IDLE);
+            setTargetState(LaraStateId::Stop);
+            setMovementAngle(getRotation().Y);
         }
 
 
         ~LaraNode();
-
-        void updateImpl(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& /*frameChangeType*/) override;
 
 
         bool isInWater() const
@@ -78,18 +72,22 @@ namespace engine
         }
 
 
-        float getAir() const
+        int getAir() const
         {
-            return m_air.getCurrentValue();
+            return m_air;
         }
 
 
+        void updateImpl();
+
+        void update() override;
+
     private:
-        void handleLaraStateOnLand(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& frameChangeType);
+        void handleLaraStateOnLand();
 
-        void handleLaraStateDiving(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& frameChangeType);
+        void handleLaraStateDiving();
 
-        void handleLaraStateSwimming(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& frameChangeType);
+        void handleLaraStateSwimming();
 
         void testInteractions();
 
@@ -97,23 +95,23 @@ namespace engine
         //! @remarks This happens e.g. just after dive-to-swim transition, when players still
         //!          keep the "Dive Forward" action key pressed; in this case, you usually won't go
         //!          diving immediately again.
-        boost::optional<std::chrono::microseconds> m_swimToDiveKeypressDuration = boost::none;
+        int m_swimToDiveKeypressDuration = 0;
         uint16_t m_secretsFoundBitmask = 0;
 
     public:
-        const core::InterpolatedValue<float>& getHealth() const noexcept
+        int getHealth() const noexcept
         {
             return m_health;
         }
 
 
-        void setHealth(const core::InterpolatedValue<float>& h) noexcept
+        void setHealth(int h) noexcept
         {
             m_health = h;
         }
 
 
-        void setAir(const core::InterpolatedValue<float>& a) noexcept
+        void setAir(int a) noexcept
         {
             m_air = a;
         }
@@ -154,21 +152,19 @@ namespace engine
 
         core::Angle getYRotationSpeed() const
         {
-            return static_cast<core::Angle>(m_yRotationSpeed);
+            return m_yRotationSpeed;
         }
 
 
-        void
-        subYRotationSpeed(const std::chrono::microseconds& deltaTime, core::Angle val, core::Angle limit = -32768_au)
+        void subYRotationSpeed(core::Angle val, core::Angle limit = -32768_au)
         {
-            m_yRotationSpeed.sub( val, deltaTime ).limitMin( limit );
+            m_yRotationSpeed = std::max(m_yRotationSpeed - val, limit);
         }
 
 
-        void
-        addYRotationSpeed(const std::chrono::microseconds& deltaTime, core::Angle val, core::Angle limit = 32767_au)
+        void addYRotationSpeed(core::Angle val, core::Angle limit = 32767_au)
         {
-            m_yRotationSpeed.add( val, deltaTime ).limitMax( limit );
+            m_yRotationSpeed = std::min(m_yRotationSpeed + val, limit);
         }
 
 
@@ -194,8 +190,6 @@ namespace engine
 
         void setTargetState(loader::LaraStateId st);
 
-        loader::LaraStateId getCurrentState() const;
-
         loader::LaraStateId getCurrentAnimState() const;
 
         void setAnimIdGlobal(loader::AnimationId anim, const boost::optional<uint16_t>& firstFrame = boost::none);
@@ -207,22 +201,19 @@ namespace engine
         boost::optional<int> getWaterSurfaceHeight() const;
 
 
-        void addSwimToDiveKeypressDuration(const std::chrono::microseconds& ms) noexcept
+        void addSwimToDiveKeypressDuration(int n) noexcept
         {
-            if( !m_swimToDiveKeypressDuration )
-                return;
-
-            *m_swimToDiveKeypressDuration += ms;
+            m_swimToDiveKeypressDuration += n;
         }
 
 
-        void setSwimToDiveKeypressDuration(const std::chrono::microseconds& ms) noexcept
+        void setSwimToDiveKeypressDuration(int n) noexcept
         {
-            m_swimToDiveKeypressDuration = ms;
+            m_swimToDiveKeypressDuration = n;
         }
 
 
-        const boost::optional<std::chrono::microseconds>& getSwimToDiveKeypressDuration() const noexcept
+        int getSwimToDiveKeypressDuration() const noexcept
         {
             return m_swimToDiveKeypressDuration;
         }
@@ -245,7 +236,65 @@ namespace engine
         void setCameraUnknown1(CamOverrideType k);
 
 
-        void onFrameChanged(FrameChangeType frameChangeType) override;
+        void addHeadRotationXY(const core::Angle& x, const core::Angle& y)
+        {
+            m_headRotation.X += x;
+            m_headRotation.Y += y;
+        }
+
+
+        void setHeadRotationX(const core::Angle& v)
+        {
+            m_headRotation.X = v;
+        }
+
+
+        void setHeadRotationY(const core::Angle& v)
+        {
+            m_headRotation.Y = v;
+        }
+
+
+        void addHeadRotationXY(const core::Angle& x, const core::Angle& minX, const core::Angle& maxX, const core::Angle& y, const core::Angle& minY, const core::Angle& maxY)
+        {
+            m_headRotation.X = util::clamp(m_headRotation.X + x, minX, maxX);
+            m_headRotation.Y = util::clamp(m_headRotation.Y + y, minY, maxY);
+        }
+
+
+        const core::TRRotation& getHeadRotation() const noexcept
+        {
+            return m_headRotation;
+        }
+
+
+        void setTorsoRotation(const core::TRRotation& r)
+        {
+            m_torsoRotation = r;
+        }
+
+
+        void setHeadRotation(const core::TRRotation& r)
+        {
+            m_headRotation = r;
+        }
+
+
+        const core::TRRotation& getTorsoRotation() const noexcept
+        {
+            return m_torsoRotation;
+        }
+
+
+        void resetHeadTorsoRotation()
+        {
+            m_headRotation = {0_deg, 0_deg, 0_deg};
+            m_torsoRotation = {0_deg, 0_deg, 0_deg};
+        }
+
+
+        core::TRRotation m_headRotation;
+        core::TRRotation m_torsoRotation;
 
 #ifndef NDEBUG
         CollisionInfo lastUsedCollisionInfo;

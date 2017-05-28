@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,11 +14,12 @@ namespace engine
         {
         public:
             explicit StateHandler_15(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::JumpPrepare)
+                : AbstractStateHandler(lara, LaraStateId::JumpPrepare)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Forward && getRelativeHeightAtDirection(getRotation().Y, 256) >= -core::ClimbLimit2ClickMin )
                 {
@@ -44,33 +46,26 @@ namespace engine
                 {
                     setTargetState(LaraStateId::FreeFall);
                 }
-
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(false);
                 collisionInfo.passableFloorDistanceBottom = loader::HeightLimit;
                 collisionInfo.passableFloorDistanceTop = -loader::HeightLimit;
                 collisionInfo.neededCeilingDistance = 0;
-                collisionInfo.yAngle = getRotation().Y;
+                collisionInfo.facingAngle = getMovementAngle();
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                if( collisionInfo.current.ceiling.distance <= -100 )
-                    return {};
+                if( collisionInfo.mid.ceiling.distance <= -100 )
+                    return;
 
-                setTargetState(LaraStateId::Stop);
                 setAnimIdGlobal(loader::AnimationId::STAY_SOLID, 185);
-                setHorizontalSpeed(core::makeInterpolatedValue(0.0f));
-                setPosition(collisionInfo.position);
-
-                return LaraStateId::Stop;
+                setTargetState(LaraStateId::Stop);
+                setHorizontalSpeed(0);
+                setPosition(collisionInfo.oldPosition);
             }
         };
     }

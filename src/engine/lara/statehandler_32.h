@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,26 +14,22 @@ namespace engine
         {
         public:
             explicit StateHandler_32(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::SlideBackward)
+                : AbstractStateHandler(lara, LaraStateId::SlideBackward)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getLevel().m_inputHandler->getInputState().jump )
                     setTargetState(LaraStateId::JumpBack);
-
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 setMovementAngle(getRotation().Y + 180_deg);
-                return commonSlideHandling(collisionInfo);
+                commonSlideHandling(collisionInfo);
             }
         };
     }

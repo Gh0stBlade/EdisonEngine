@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,50 +12,44 @@ namespace engine
         {
         public:
             explicit StateHandler_23(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::RollBackward)
+                : AbstractStateHandler(lara, LaraStateId::RollBackward)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
-            {
-                return {};
-            }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
             }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 setFalling(false);
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
-                collisionInfo.yAngle = getRotation().Y + 180_deg;
-                setMovementAngle(collisionInfo.yAngle);
+                setFallSpeed(0);
+                collisionInfo.facingAngle = getRotation().Y + 180_deg;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.policyFlags |= CollisionInfo::SlopesAreWalls;
                 collisionInfo.passableFloorDistanceBottom = loader::HeightLimit;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                auto nextHandler = stopIfCeilingBlocked(collisionInfo);
-                if( nextHandler )
-                    return nextHandler;
-                if( tryStartSlide(collisionInfo, nextHandler) )
-                    return nextHandler;
+                if( stopIfCeilingBlocked(collisionInfo) )
+                    return;
+                if( tryStartSlide(collisionInfo) )
+                    return;
 
-                if( collisionInfo.current.floor.distance <= 200 )
+                if( collisionInfo.mid.floor.distance <= 200 )
                 {
-                    applyCollisionFeedback(collisionInfo);
+                    applyShift(collisionInfo);
                     placeOnFloor(collisionInfo);
-                    return nextHandler;
+                    return;
                 }
 
                 setAnimIdGlobal(loader::AnimationId::FREE_FALL_BACK, 1473);
                 setTargetState(LaraStateId::FallBackward);
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(true);
-
-                return LaraStateId::FallBackward;
             }
         };
     }

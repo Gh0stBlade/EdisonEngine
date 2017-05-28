@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,33 +12,29 @@ namespace engine
         {
         public:
             explicit StateHandler_Pushable(LaraNode& lara, LaraStateId id)
-                    : AbstractStateHandler(lara, id)
+                : AbstractStateHandler(lara, id)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& collisionInfo) override final
+
+            void handleInput(CollisionInfo& collisionInfo) override
             {
                 collisionInfo.policyFlags &= ~(CollisionInfo::EnableBaddiePush | CollisionInfo::EnableSpaz);
                 setCameraUnknown1(CamOverrideType::NotActivatedByLara);
                 setCameraRotation(-25_deg, 35_deg);
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override final
-            {
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override final
+            void postprocessFrame(CollisionInfo& collisionInfo) override final
             {
-                setMovementAngle(getRotation().Y);
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.passableFloorDistanceBottom = core::ClimbLimit2ClickMin;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.policyFlags |= CollisionInfo::SlopesArePits | CollisionInfo::SlopesAreWalls;
 
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
-
-                return {};
             }
         };
     }

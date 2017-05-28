@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,85 +14,76 @@ namespace engine
         {
         public:
             explicit StateHandler_Underwater(LaraNode& lara, LaraStateId id)
-                    : AbstractStateHandler(lara, id)
+                : AbstractStateHandler(lara, id)
             {
             }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
-                collisionInfo.yAngle = getRotation().Y;
+                collisionInfo.facingAngle = getRotation().Y;
                 if( abs(getRotation().X) > 90_deg )
-                    collisionInfo.yAngle += 180_deg;
-                setMovementAngle(collisionInfo.yAngle);
-                collisionInfo.initHeightInfo(getPosition() + core::ExactTRCoordinates{0, 200, 0}, getLevel(), 400);
+                    collisionInfo.facingAngle += 180_deg;
+                setMovementAngle(collisionInfo.facingAngle);
+                collisionInfo.initHeightInfo(getPosition() + core::TRCoordinates{0, 200, 0}, getLevel(), 400);
 
-                applyCollisionFeedback(collisionInfo);
+                applyShift(collisionInfo);
 
-                m_xRotationSpeed = 0_deg;
-                m_yRotationSpeed = 0_deg;
-
-                switch( collisionInfo.axisCollisions )
+                switch( collisionInfo.collisionType )
                 {
                     case CollisionInfo::AxisColl_FrontLeftBlocked:
-                        m_yRotationSpeed = 5_deg;
+                        getLara().addYRotation(5_deg);
                         break;
                     case CollisionInfo::AxisColl_FrontRightBlocked:
-                        m_yRotationSpeed = -5_deg;
+                        getLara().addYRotation(-5_deg);
                         break;
                     case CollisionInfo::AxisColl_InvalidPosition:
-                        setFallSpeed(core::makeInterpolatedValue(0.0f));
-                        return {};
+                        setFallSpeed(0);
+                        return;
                     case CollisionInfo::AxisColl_InsufficientFrontCeilingSpace:
-                        setFallSpeed(core::makeInterpolatedValue(0.0f));
+                        setFallSpeed(0);
                         break;
                     case CollisionInfo::AxisColl_ScalpCollision:
                         if( getRotation().X > -45_deg )
-                            m_xRotationSpeed = -2_deg; // setXRotation(getRotation().X - 364);
+                            getLara().addXRotation(-2_deg);
                         break;
                     case CollisionInfo::AxisColl_FrontForwardBlocked:
                         if( getRotation().X > 35_deg )
-                            m_xRotationSpeed = 2_deg; // setXRotation(getRotation().X + 364);
+                            getLara().addXRotation(2_deg);
                         else if( getRotation().X < -35_deg )
-                            m_xRotationSpeed = -2_deg; // setXRotation(getRotation().X - 364);
+                            getLara().addXRotation(-2_deg);
                         else
-                            setFallSpeed(core::makeInterpolatedValue(0.0f));
+                            setFallSpeed(0);
                         break;
                     default:
                         break;
                 }
 
-                if( collisionInfo.current.floor.distance >= 0 )
-                    return {};
+                if( collisionInfo.mid.floor.distance >= 0 )
+                    return;
 
-                setPosition(getPosition() + core::ExactTRCoordinates(0, gsl::narrow_cast<float>(collisionInfo.current.floor.distance), 0));
-                m_xRotationSpeed = m_xRotationSpeed + 2_deg;
-
-                return {};
+                placeOnFloor(collisionInfo);
+                getLara().addXRotation(2_deg);
             }
 
+
         protected:
-            void handleDiveInput()
+            void handleDiveRotationInput()
             {
                 if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Forward )
-                    m_xRotationSpeed = -2_deg;
+                    getLara().addXRotation(-2_deg);
                 else if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Backward )
-                    m_xRotationSpeed = 2_deg;
-                else
-                    m_xRotationSpeed = 0_deg;
+                    getLara().addXRotation(2_deg);
+
                 if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left )
                 {
-                    m_yRotationSpeed = -6_deg;
-                    m_zRotationSpeed = -3_deg;
+                    getLara().addYRotation(-6_deg);
+                    getLara().addZRotation(-3_deg);
                 }
                 else if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right )
                 {
-                    m_yRotationSpeed = 6_deg;
-                    m_zRotationSpeed = 3_deg;
-                }
-                else
-                {
-                    m_yRotationSpeed = 0_deg;
-                    m_zRotationSpeed = 0_deg;
+                    getLara().addYRotation(6_deg);
+                    getLara().addZRotation(3_deg);
                 }
             }
         };

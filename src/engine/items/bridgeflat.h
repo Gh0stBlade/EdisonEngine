@@ -14,7 +14,7 @@ namespace engine
                        const std::string& name,
                        const gsl::not_null<const loader::Room*>& room,
                        const core::Angle& angle,
-                       const core::ExactTRCoordinates& position,
+                       const core::TRCoordinates& position,
                        const floordata::ActivationState& activationState,
                        int16_t darkness,
                        const loader::AnimatedModel& animatedModel)
@@ -23,34 +23,25 @@ namespace engine
             }
 
 
-            void updateImpl(const std::chrono::microseconds& /*deltaTime*/, const boost::optional<FrameChangeType>& /*frameChangeType*/) override
+            void update() override
             {
+                ItemNode::update();
             }
 
 
-            void onInteract(LaraNode& /*lara*/) override
-            {
-            }
-
-
-            void onFrameChanged(FrameChangeType /*frameChangeType*/) override
-            {
-            }
-
-
-            void patchFloor(const core::TRCoordinates& pos, long& y) override
+            void patchFloor(const core::TRCoordinates& pos, int& y) override
             {
                 if( pos.Y <= getPosition().Y )
-                    y = std::lround(getPosition().Y);
+                    y = getPosition().Y;
             }
 
 
-            void patchCeiling(const core::TRCoordinates& pos, long& y) override
+            void patchCeiling(const core::TRCoordinates& pos, int& y) override
             {
                 if( pos.Y <= getPosition().Y )
                     return;
 
-                y = std::lround(getPosition().Y + loader::QuarterSectorSize);
+                y = getPosition().Y + loader::QuarterSectorSize;
             }
         };
     }

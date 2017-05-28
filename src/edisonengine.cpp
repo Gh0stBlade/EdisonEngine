@@ -5,19 +5,20 @@
 #include "LuaState.h"
 
 #include "gl/framebuffer.h"
+#include "ext/font.h"
 
 #include <boost/range/adaptors.hpp>
 #include <boost/filesystem/operations.hpp>
 
 namespace
 {
-    void drawText(const std::unique_ptr<gameplay::Font>& font, int x, int y, const std::string& txt, const gameplay::gl::RGBA8& col = {255,255,255,255})
+    void drawText(const std::unique_ptr<gameplay::ext::Font>& font, int x, int y, const std::string& txt, const gameplay::gl::RGBA8& col = {255,255,255,255})
     {
         font->drawText(txt, x, y, col.r, col.g, col.b, col.a);
     }
 
 
-    void drawDebugInfo(const std::unique_ptr<gameplay::Font>& font, gsl::not_null<level::Level*> lvl, int fps)
+    void drawDebugInfo(const std::unique_ptr<gameplay::ext::Font>& font, gsl::not_null<level::Level*> lvl, int fps)
     {
         drawText(font, font->getTarget()->getWidth() - 40, font->getTarget()->getHeight() - 20, std::to_string(fps));
 
@@ -25,18 +26,18 @@ namespace
         drawText(font, 10, 40, lvl->m_lara->getCurrentRoom()->node->getId());
 
         drawText(font, 300, 20, boost::lexical_cast<std::string>(std::lround(lvl->m_lara->getRotation().Y.toDegrees())) + " deg");
-        drawText(font, 300, 40, "x=" + boost::lexical_cast<std::string>(std::lround(lvl->m_lara->getPosition().X)));
-        drawText(font, 300, 60, "y=" + boost::lexical_cast<std::string>(std::lround(lvl->m_lara->getPosition().Y)));
-        drawText(font, 300, 80, "z=" + boost::lexical_cast<std::string>(std::lround(lvl->m_lara->getPosition().Z)));
+        drawText(font, 300, 40, "x=" + boost::lexical_cast<std::string>(lvl->m_lara->getPosition().X));
+        drawText(font, 300, 60, "y=" + boost::lexical_cast<std::string>(lvl->m_lara->getPosition().Y));
+        drawText(font, 300, 80, "z=" + boost::lexical_cast<std::string>(lvl->m_lara->getPosition().Z));
 
         // physics
-        drawText(font, 300, 100, "fall " + boost::lexical_cast<std::string>(std::lround(lvl->m_lara->getFallSpeed().getCurrentValue())));
+        drawText(font, 300, 100, "grav " + boost::lexical_cast<std::string>(lvl->m_lara->getFallSpeed()));
+        drawText(font, 300, 120, "fwd  " + boost::lexical_cast<std::string>(lvl->m_lara->getHorizontalSpeed()));
 
         // animation
         drawText(font, 10, 60, std::string("current/anim    ") + loader::toString(lvl->m_lara->getCurrentAnimState()));
-        drawText(font, 10, 80, std::string("current/handler ") + loader::toString(lvl->m_lara->getCurrentState()));
         drawText(font, 10, 100, std::string("target          ") + loader::toString(lvl->m_lara->getTargetState()));
-        drawText(font, 10, 120, std::string("frame           ") + boost::lexical_cast<std::string>(core::toFrame(lvl->m_lara->getCurrentTime())));
+        drawText(font, 10, 120, std::string("frame           ") + boost::lexical_cast<std::string>(lvl->m_lara->getCurrentFrame()));
         drawText(font, 10, 140, std::string("anim            ") + toString(static_cast<loader::AnimationId>(lvl->m_lara->getAnimId())));
 
         // triggers
@@ -63,16 +64,16 @@ namespace
                         drawText(font, 180, y, "locked");
                         break;
                 }
-                drawText(font, 260, y, boost::lexical_cast<std::string>(item->m_activationState.getTimeout().count()));
+                drawText(font, 260, y, boost::lexical_cast<std::string>(item->m_activationState.getTimeout()));
                 y += 20;
             }
         }
 
 #ifndef NDEBUG
         // collision
-        drawText(font, 400, 20, boost::lexical_cast<std::string>("AxisColl: ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.axisCollisions));
-        drawText(font, 400, 40, boost::lexical_cast<std::string>("Current floor:   ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.current.floor.distance));
-        drawText(font, 400, 60, boost::lexical_cast<std::string>("Current ceiling: ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.current.ceiling.distance));
+        drawText(font, 400, 20, boost::lexical_cast<std::string>("AxisColl: ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.collisionType));
+        drawText(font, 400, 40, boost::lexical_cast<std::string>("Current floor:   ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.mid.floor.distance));
+        drawText(font, 400, 60, boost::lexical_cast<std::string>("Current ceiling: ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.mid.ceiling.distance));
         drawText(font, 400, 80, boost::lexical_cast<std::string>("Front floor:     ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.front.floor.distance));
         drawText(font, 400, 100, boost::lexical_cast<std::string>("Front ceiling:   ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.front.ceiling.distance));
         drawText(font, 400, 120, boost::lexical_cast<std::string>("Front/L floor:   ") + boost::lexical_cast<std::string>(lvl->m_lara->lastUsedCollisionInfo.frontLeft.floor.distance));
@@ -154,32 +155,22 @@ private:
 };
 
 
-void update(std::chrono::microseconds deltaTime, const std::unique_ptr<level::Level>& lvl)
+void update(const std::unique_ptr<level::Level>& lvl)
 {
-    // deltaTime /= 10;
-    if(deltaTime == std::chrono::microseconds::zero())
-        deltaTime = std::chrono::microseconds(1);
-
-    while( deltaTime > std::chrono::microseconds::zero() )
+    for( const std::shared_ptr<engine::items::ItemNode>& ctrl : lvl->m_itemNodes | boost::adaptors::map_values )
     {
-        auto subTime = std::min(deltaTime, core::FrameTime);
-        deltaTime -= subTime;
+        if( ctrl.get() == lvl->m_lara ) // Lara is special and needs to be updated last
+            continue;
 
-        for( const std::shared_ptr<engine::items::ItemNode>& ctrl : lvl->m_itemNodes | boost::adaptors::map_values )
-        {
-            if( ctrl.get() == lvl->m_lara ) // Lara is special and needs to be updated last
-                continue;
-
-            ctrl->update(subTime);
-        }
-
-        for( const std::shared_ptr<engine::items::ItemNode>& ctrl : lvl->m_dynamicItems )
-        {
-            ctrl->update(subTime);
-        }
-
-        lvl->m_lara->update(subTime);
+        ctrl->update();
     }
+
+    for( const std::shared_ptr<engine::items::ItemNode>& ctrl : lvl->m_dynamicItems )
+    {
+        ctrl->update();
+    }
+
+    lvl->m_lara->update();
 
     lvl->applyScheduledDeletions();
 }
@@ -223,11 +214,15 @@ int main()
     }
 
     auto screenOverlay = std::make_unique<gameplay::ScreenOverlay>(game);
-    auto font = std::make_unique<gameplay::Font>("DroidSansMono.ttf", 12);
+    auto font = std::make_unique<gameplay::ext::Font>("DroidSansMono.ttf", 12);
     font->setTarget(screenOverlay->getImage());
 
-    FullScreenFX depthDarknessFx{game, gameplay::ShaderProgram::createFromFile("shaders/fx_darkness.vert", "shaders/fx_darkness.frag", {}), gsl::narrow<GLint>(game->getMultiSampling())};
-    FullScreenFX depthDarknessWaterFx{game, gameplay::ShaderProgram::createFromFile("shaders/fx_darkness.vert", "shaders/fx_darkness.frag", {"WATER"}), gsl::narrow<GLint>(game->getMultiSampling())};
+    FullScreenFX depthDarknessFx{game, gameplay::ShaderProgram::createFromFile("shaders/fx_darkness.vert", "shaders/fx_darkness.frag", {"LENS_DISTORTION"}), gsl::narrow<GLint>(game->getMultiSampling())};
+    depthDarknessFx.getMaterial()->getParameter("aspect_ratio")->set(1.6f);
+    depthDarknessFx.getMaterial()->getParameter("distortion_power")->set(-1.0f);
+    FullScreenFX depthDarknessWaterFx{game, gameplay::ShaderProgram::createFromFile("shaders/fx_darkness.vert", "shaders/fx_darkness.frag", {"WATER", "LENS_DISTORTION"}), gsl::narrow<GLint>(game->getMultiSampling())};
+    depthDarknessWaterFx.getMaterial()->getParameter("aspect_ratio")->set(1.6f);
+    depthDarknessWaterFx.getMaterial()->getParameter("distortion_power")->set(-2.0f);
     depthDarknessWaterFx.getMaterial()->getParameter("u_time")->bind(
                             [game](const gameplay::Node& /*node*/, gameplay::gl::Program::ActiveUniform& uniform)
                             {
@@ -235,6 +230,11 @@ int main()
                                 uniform.set(gsl::narrow_cast<float>(now.time_since_epoch().count()));
                             }
                         );
+
+    static const auto frameTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::seconds(1)) / core::FrameRate;
+
+    bool showDebugInfo = false;
+    bool showDebugInfoToggled = false;
 
     auto lastTime = game->getGameTime();
     while( game->loop() )
@@ -244,17 +244,30 @@ int main()
         lvl->m_audioDev.update();
         lvl->m_inputHandler->update();
 
-        auto deltaTime = std::chrono::duration_cast<std::chrono::microseconds>( game->getGameTime() - lastTime );
-        if( deltaTime <= std::chrono::microseconds::zero() )
+        if(lvl->m_inputHandler->getInputState().debug)
         {
-            continue;
+            if(!showDebugInfoToggled)
+            {
+                showDebugInfoToggled = true;
+                showDebugInfo = !showDebugInfo;
+            }
+        }
+        else
+        {
+            showDebugInfoToggled = false;
+        }
+
+        auto deltaTime = std::chrono::duration_cast<std::chrono::microseconds>( game->getGameTime() - lastTime );
+        if( deltaTime < frameTime )
+        {
+            std::this_thread::sleep_for(frameTime - deltaTime);
         }
 
         lastTime = game->getGameTime();
 
-        update(deltaTime, lvl);
+        update(lvl);
 
-        lvl->m_cameraController->update(deltaTime);
+        lvl->m_cameraController->update();
 
         lvl->m_audioDev.setListenerTransform(lvl->m_cameraController->getPosition(),
                                              lvl->m_cameraController->getFrontVector(),
@@ -286,7 +299,8 @@ int main()
             depthDarknessFx.render(context);
 #endif
 
-        drawDebugInfo(font, lvl.get(), game->getFrameRate());
+        if(showDebugInfo)
+            drawDebugInfo(font, lvl.get(), game->getFrameRate());
 
         for( const std::shared_ptr<engine::items::ItemNode>& ctrl : lvl->m_itemNodes | boost::adaptors::map_values )
         {
@@ -311,7 +325,8 @@ int main()
             projVertex.x = (projVertex.x / 2 + 0.5f) * game->getViewport().width;
             projVertex.y = (1 - (projVertex.y / 2 + 0.5f)) * game->getViewport().height;
 
-            font->drawText(ctrl->getId().c_str(), projVertex.x, projVertex.y, gameplay::gl::RGBA8{255});
+            if (showDebugInfo)
+                font->drawText(ctrl->getId().c_str(), projVertex.x, projVertex.y, gameplay::gl::RGBA8{255});
         }
 
         screenOverlay->draw(context);

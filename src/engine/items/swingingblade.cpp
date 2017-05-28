@@ -7,9 +7,9 @@ namespace engine
 {
     namespace items
     {
-        void SwingingBlade::updateImpl(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& /*frameChangeType*/)
+        void SwingingBlade::update()
         {
-            if( updateActivationTimeout( deltaTime ) )
+            if( updateActivationTimeout() )
             {
                 if( getCurrentState() == 0 )
                     setTargetState( 2 );
@@ -18,18 +18,14 @@ namespace engine
             {
                 setTargetState( 0 );
             }
-        }
 
-
-        void SwingingBlade::onFrameChanged(FrameChangeType frameChangeType)
-        {
             auto room = getCurrentRoom();
-            auto sector = getLevel().findRealFloorSector( getPosition().toInexact(), &room );
-            setCurrentRoom( room );
-            setFloorHeight( HeightInfo::fromFloor( sector, getPosition().toInexact(), getLevel().m_cameraController )
-                                    .distance );
+            auto sector = getLevel().findRealFloorSector(getPosition(), &room);
+            setCurrentRoom(room);
+            setFloorHeight(HeightInfo::fromFloor(sector, getPosition(), getLevel().m_cameraController)
+                           .distance);
 
-            ItemNode::onFrameChanged( frameChangeType );
+            ItemNode::update();
         }
     }
 }

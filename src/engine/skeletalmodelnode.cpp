@@ -3,7 +3,6 @@
 #include "level/level.h"
 
 #include <stack>
-#include <chrono>
 
 
 namespace
@@ -38,7 +37,7 @@ namespace engine
             : Node{id}
             , m_level{lvl}
             , m_animId{mdl.animationIndex}
-            , m_time{core::fromFrame( lvl->m_animations[mdl.animationIndex].firstFrame )}
+            , m_frame{lvl->m_animations[mdl.animationIndex].firstFrame}
             , m_model{mdl}
             , m_targetState{lvl->m_animations[mdl.animationIndex].state_id}
     {
@@ -46,15 +45,15 @@ namespace engine
     }
 
 
-    std::chrono::microseconds SkeletalModelNode::getStartTime() const
+    int SkeletalModelNode::getStartFrame() const
     {
-        return core::fromFrame( m_level->m_animations[m_animId].firstFrame );
+        return m_level->m_animations[m_animId].firstFrame;
     }
 
 
-    std::chrono::microseconds SkeletalModelNode::getEndTime() const
+    int SkeletalModelNode::getEndFrame() const
     {
-        return core::fromFrame( m_level->m_animations[m_animId].lastFrame + 1 );
+        return m_level->m_animations[m_animId].lastFrame + 1;
     }
 
 
@@ -73,11 +72,11 @@ namespace engine
     }
 
 
-    float SkeletalModelNode::calculateFloorSpeed() const
+    int SkeletalModelNode::calculateFloorSpeed(int frameOffset) const
     {
         const loader::Animation& currentAnim = getCurrentAnimData();
-        auto scaled = currentAnim.speed
-                      + currentAnim.accelleration * core::toFloatFrame(getCurrentLocalTime());
+        const auto scaled = currentAnim.speed
+                      + currentAnim.accelleration * (getCurrentLocalFrame() + frameOffset);
         return scaled / (1 << 16);
     }
 
@@ -117,12 +116,12 @@ namespace engine
 
         const auto keyframeDataSize = m_model.boneCount * 2 + 10;
 
-        const auto startTime = core::fromFrame( anim.firstFrame );
-        const auto endTime = core::fromFrame( anim.lastFrame + 1 );
+        const uint16_t startFrame = anim.firstFrame;
+        const uint16_t endFrame = anim.lastFrame + 1;
 
-        BOOST_ASSERT( m_time >= startTime && m_time < endTime );
-        const auto animationTime = m_time - startTime;
-        int firstKeyframeIndex = core::toFrame( animationTime ) / anim.segmentLength;
+        //BOOST_ASSERT( m_time >= startTime && m_time < endTime );
+        const auto animationFrame = util::clamp(m_frame, startFrame, endFrame) - startFrame;
+        int firstKeyframeIndex = animationFrame / anim.segmentLength;
         BOOST_ASSERT( firstKeyframeIndex >= 0 );
         BOOST_ASSERT( static_cast<size_t>(firstKeyframeIndex) < anim.getKeyframeCount() );
 
@@ -138,19 +137,19 @@ namespace engine
             result.secondFrame = reinterpret_cast<const AnimFrame*>(keyframes + keyframeDataSize * (firstKeyframeIndex + 1));
         }
 
-        auto segmentDuration = core::fromFrame( anim.segmentLength );
-        auto segmentTime = animationTime % segmentDuration;
+        auto segmentDuration = anim.segmentLength;
+        auto segmentFrame = animationFrame % segmentDuration;
 
         // If we are interpolating the last two keyframes, the real animation may be shorter
         // than the position of the last keyframe.  E.g., with a stretch factor of 10 and a length of 12,
         // the last segment would only be 2 frames long.  Fame 1 is interpolated with a bias of 0.1, but
         // frame 11 must be interpolated with a bias of 0.5 to compensate the shorter segment length.
-        if( segmentDuration * (firstKeyframeIndex + 1) >= endTime )
-            segmentDuration = endTime - segmentDuration * firstKeyframeIndex;
+        if( segmentDuration * (firstKeyframeIndex + 1) >= endFrame )
+            segmentDuration = endFrame - segmentDuration * firstKeyframeIndex;
 
-        BOOST_ASSERT( segmentTime <= segmentDuration );
+        BOOST_ASSERT( segmentFrame <= segmentDuration );
 
-        result.bias += static_cast<float>(segmentTime.count()) / segmentDuration.count();
+        result.bias += static_cast<float>(segmentFrame) / segmentDuration;
         BOOST_ASSERT( result.bias >= 0 && result.bias <= 2 );
 
         return result;
@@ -282,40 +281,23 @@ namespace engine
     }
 
 
-    void SkeletalModelNode::advanceFrame()
-    {
-        BOOST_LOG_TRIVIAL( debug ) << "Advance frame: current=" << m_time.count() << "us, end=" << getEndTime().count()
-                                   << "us";
-
-        addTime( std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::seconds( 1 ) ) / core::FrameRate );
-    }
-
-
-    gameplay::BoundingBox SkeletalModelNode::getBoundingBox() const
+    BoundingBox SkeletalModelNode::getBoundingBox() const
     {
         auto framePair = getInterpolationInfo();
-        BOOST_ASSERT( framePair.bias >= 0 && framePair.bias <= 2 );
-
-        gameplay::BoundingBox result;
+        BOOST_ASSERT( framePair.bias >= 0 && framePair.bias <= 1 );
 
         if( framePair.secondFrame != nullptr )
         {
-            result.min = glm::mix( framePair.firstFrame->bbox.getMinGl(), framePair.secondFrame->bbox.getMinGl(),
-                                   framePair.bias );
-            result.max = glm::mix( framePair.firstFrame->bbox.getMaxGl(), framePair.secondFrame->bbox.getMaxGl(),
-                                   framePair.bias );
+            return BoundingBox(framePair.firstFrame->bbox, framePair.secondFrame->bbox, framePair.bias);
         }
         else
         {
-            result.min = framePair.firstFrame->bbox.getMinGl();
-            result.max = framePair.firstFrame->bbox.getMaxGl();
+            return framePair.firstFrame->bbox;
         }
-
-        return result;
     }
 
 
-    bool SkeletalModelNode::handleTRTransitions()
+    bool SkeletalModelNode::handleStateTransitions()
     {
         if( getCurrentState() == m_targetState )
             return false;
@@ -335,11 +317,11 @@ namespace engine
                 BOOST_ASSERT( j < m_level->m_transitionCases.size() );
                 const loader::TransitionCase& trc = m_level->m_transitionCases[j];
 
-                if( m_time >= core::fromFrame( trc.firstFrame ) && m_time < core::fromFrame( trc.lastFrame + 1 ) )
+                if( m_frame >= trc.firstFrame && m_frame <= trc.lastFrame )
                 {
                     BOOST_LOG_TRIVIAL(debug) << getId() << " -- found transition from state " << getCurrentState() << " to state " << m_targetState
                         << ", new animation " << trc.targetAnimation << "/frame " << trc.targetFrame;
-                    setAnimIdGlobalImpl( trc.targetAnimation, trc.targetFrame, false );
+                    setAnimIdGlobal( trc.targetAnimation, trc.targetFrame);
                     return true;
                 }
             }
@@ -349,7 +331,7 @@ namespace engine
     }
 
 
-    void SkeletalModelNode::setAnimIdGlobalImpl(size_t animId, size_t frame, bool fireEvents)
+    void SkeletalModelNode::setAnimIdGlobal(size_t animId, size_t frame)
     {
         BOOST_ASSERT( animId < m_level->m_animations.size() );
 
@@ -359,41 +341,14 @@ namespace engine
             frame = anim.firstFrame;
 
         m_animId = animId;
-        m_time = core::fromFrame( frame );
-
-        if(!fireEvents)
-            return;
-
-        onFrameChanged( FrameChangeType::NewFrame );
+        m_frame = frame;
     }
 
 
-    boost::optional<SkeletalModelNode::FrameChangeType> SkeletalModelNode::addTime(const std::chrono::microseconds& time)
+    bool SkeletalModelNode::advanceFrame()
     {
-        bool frameChanged = core::toFrame(m_time) != core::toFrame(m_time + time);
-        m_time += time;
-
-        boost::optional<FrameChangeType> result;
-        if(handleTRTransitions() || frameChanged)
-        {
-            result = FrameChangeType::NewFrame;
-        }
-
-        if(m_time >= getEndTime())
-        {
-            onFrameChanged(FrameChangeType::EndOfAnim);
-
-            const loader::Animation& currentAnim = getCurrentAnimData();
-            setAnimIdGlobalImpl(currentAnim.nextAnimation, currentAnim.nextFrame, false);
-
-            result = FrameChangeType::EndOfAnim;
-            //setTargetState(getCurrentState());
-        }
-        else if(result.is_initialized())
-        {
-            onFrameChanged(*result);
-        }
-
-        return result;
+        ++m_frame;
+        handleStateTransitions();
+        return m_frame >= getEndFrame();
     }
 }

@@ -2,7 +2,7 @@
 
 #include "statehandler_standing.h"
 #include "engine/cameracontroller.h"
-
+#include "engine/laranode.h"
 
 namespace engine
 {
@@ -12,26 +12,44 @@ namespace engine
         {
         public:
             explicit StateHandler_2(LaraNode& lara)
-                    : StateHandler_Standing(lara, LaraStateId::Stop)
+                : StateHandler_Standing(lara, LaraStateId::Stop)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& collisionInfo) override
+
+            void handleInput(CollisionInfo& collisionInfo) override
             {
                 if( getHealth() <= 0 )
                 {
                     setTargetState(LaraStateId::Death);
-                    return {};
+                    return;
                 }
 
                 if( getLevel().m_inputHandler->getInputState().roll )
                 {
                     setAnimIdGlobal(loader::AnimationId::ROLL_BEGIN);
                     setTargetState(LaraStateId::Stop);
-                    return LaraStateId::RollForward;
+                    return;
                 }
 
                 setTargetState(LaraStateId::Stop);
+
+                if( getLevel().m_inputHandler->getInputState().freeLook )
+                {
+                    getLevel().m_cameraController->setCamOverrideType(CamOverrideType::FreeLook);
+                    getLara().addHeadRotationXY(
+                        -FreeLookMouseMovementScale * (getLevel().m_inputHandler->getInputState().mouseMovement.y / 2000), -42_deg, 22_deg,
+                        FreeLookMouseMovementScale * (getLevel().m_inputHandler->getInputState().mouseMovement.x / 2000), -44_deg, 44_deg
+                    );
+                    getLara().setTorsoRotation(getLara().getHeadRotation());
+
+                    return;
+                }
+
+                if( getLevel().m_cameraController->getCamOverrideType() == CamOverrideType::FreeLook )
+                {
+                    getLevel().m_cameraController->setCamOverrideType(CamOverrideType::None);
+                }
 
                 if( getLevel().m_inputHandler->getInputState().stepMovement == AxisMovement::Left )
                 {
@@ -58,47 +76,16 @@ namespace engine
                 else if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Forward )
                 {
                     if( getLevel().m_inputHandler->getInputState().moveSlow )
-                        create(LaraStateId::WalkForward, getLara())->handleInputImpl(collisionInfo);
+                        create(LaraStateId::WalkForward, getLara())->handleInput(collisionInfo);
                     else
-                        create(LaraStateId::RunForward, getLara())->handleInputImpl(collisionInfo);
+                        create(LaraStateId::RunForward, getLara())->handleInput(collisionInfo);
                 }
                 else if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Backward )
                 {
                     if( getLevel().m_inputHandler->getInputState().moveSlow )
-                        create(LaraStateId::WalkBackward, getLara())->handleInputImpl(collisionInfo);
+                        create(LaraStateId::WalkBackward, getLara())->handleInput(collisionInfo);
                     else
                         setTargetState(LaraStateId::RunBack);
-                }
-
-                return {};
-            }
-
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
-                if(getLevel().m_inputHandler->getInputState().freeLook)
-                {
-                    getLevel().m_cameraController->setCamOverrideType(CamOverrideType::FreeLook);
-                    getLevel().m_cameraController->addHeadRotationXY(
-                            -FreeLookMouseMovementScale * (getLevel().m_inputHandler->getInputState().mouseMovement.y/2000),
-                            FreeLookMouseMovementScale * (getLevel().m_inputHandler->getInputState().mouseMovement.x/2000)
-                    );
-                    auto r = getLevel().m_cameraController->getHeadRotation();
-                    if(r.Y < -44_deg)
-                        r.Y = -44_deg;
-                    else if(r.Y > 44_deg)
-                        r.Y = 44_deg;
-
-                    if(r.X < -42_deg)
-                        r.X = -42_deg;
-                    else if(r.X > 22_deg)
-                        r.X = 22_deg;
-
-                    getLevel().m_cameraController->setHeadRotation(r);
-                    getLevel().m_cameraController->setTorsoRotation(r);
-                }
-                else if(getLevel().m_cameraController->getCamOverrideType() == CamOverrideType::FreeLook)
-                {
-                    getLevel().m_cameraController->setCamOverrideType(CamOverrideType::None);
                 }
             }
         };

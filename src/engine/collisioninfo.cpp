@@ -6,28 +6,45 @@
 
 namespace engine
 {
-    void CollisionInfo::initHeightInfo(const core::ExactTRCoordinates& laraPos, const level::Level& level, int height)
+    namespace
     {
-        axisCollisions = AxisColl_None;
-        collisionFeedback = {0,0,0};
-        orientationAxis = *core::axisFromAngle(yAngle, 45_deg);
+        int reflectAtSectorBoundary(int target, int current)
+        {
+            const auto targetSector = target / loader::SectorSize;
+            const auto currentSector = current / loader::SectorSize;
+            if (targetSector == currentSector)
+                return 0;
+
+            const auto targetInSector = target % loader::SectorSize;
+            if (currentSector <= targetSector)
+                return -(targetInSector + 1);
+            else
+                return loader::SectorSize - (targetInSector - 1);
+        }
+    }
+
+    void CollisionInfo::initHeightInfo(const core::TRCoordinates& laraPos, const level::Level& level, int height)
+    {
+        collisionType = AxisColl_None;
+        shift = {0,0,0};
+        facingAxis = *core::axisFromAngle(facingAngle, 45_deg);
 
         gsl::not_null<const loader::Room*> room = level.m_lara->getCurrentRoom();
-        const auto refTestPos = laraPos - core::ExactTRCoordinates(0, height + core::ScalpToHandsHeight, 0);
-        gsl::not_null<const loader::Sector*> currentSector = level.findRealFloorSector(refTestPos.toInexact(), &room);
+        const auto refTestPos = laraPos - core::TRCoordinates(0, height + core::ScalpToHandsHeight, 0);
+        gsl::not_null<const loader::Sector*> currentSector = level.findRealFloorSector(refTestPos, &room);
 
-        current.init(currentSector, refTestPos.toInexact(), level.m_cameraController, laraPos.Y, height);
+        mid.init(currentSector, refTestPos, level.m_cameraController, laraPos.Y, height);
 
-        std::tie(floorSlantX, floorSlantZ) = level.getFloorSlantInfo(currentSector, laraPos.toInexact());
+        std::tie(floorSlantX, floorSlantZ) = level.getFloorSlantInfo(currentSector, laraPos);
 
-        float frontX = 0, frontZ = 0;
-        float frontLeftX = 0, frontLeftZ = 0;
-        float frontRightX = 0, frontRightZ = 0;
+        int frontX = 0, frontZ = 0;
+        int frontLeftX = 0, frontLeftZ = 0;
+        int frontRightX = 0, frontRightZ = 0;
 
-        switch( orientationAxis )
+        switch( facingAxis )
         {
         case core::Axis::PosZ:
-            frontX = yAngle.sin() * collisionRadius;
+            frontX = facingAngle.sin() * collisionRadius;
             frontZ = collisionRadius;
             frontLeftZ = collisionRadius;
             frontLeftX = -collisionRadius;
@@ -36,14 +53,14 @@ namespace engine
             break;
         case core::Axis::PosX:
             frontX = collisionRadius;
-            frontZ = yAngle.cos() * collisionRadius;
+            frontZ = facingAngle.cos() * collisionRadius;
             frontLeftX = collisionRadius;
             frontLeftZ = collisionRadius;
             frontRightX = collisionRadius;
             frontRightZ = -collisionRadius;
             break;
         case core::Axis::NegZ:
-            frontX = yAngle.sin() * collisionRadius;
+            frontX = facingAngle.sin() * collisionRadius;
             frontZ = -collisionRadius;
             frontLeftX = collisionRadius;
             frontLeftZ = -collisionRadius;
@@ -52,7 +69,7 @@ namespace engine
             break;
         case core::Axis::NegX:
             frontX = -collisionRadius;
-            frontZ = yAngle.cos() * collisionRadius;
+            frontZ = facingAngle.cos() * collisionRadius;
             frontLeftX = -collisionRadius;
             frontLeftZ = -collisionRadius;
             frontRightX = -collisionRadius;
@@ -61,12 +78,12 @@ namespace engine
         }
 
         // Front
-        auto testPos = refTestPos + core::ExactTRCoordinates(frontX, 0, frontZ);
-        auto sector = level.findRealFloorSector(testPos.toInexact(), &room);
-        front.init(sector, testPos.toInexact(), level.m_cameraController, laraPos.Y, height);
+        auto testPos = refTestPos + core::TRCoordinates(frontX, 0, frontZ);
+        auto sector = level.findRealFloorSector(testPos, &room);
+        front.init(sector, testPos, level.m_cameraController, laraPos.Y, height);
         if( (policyFlags & SlopesAreWalls) != 0 && front.floor.slantClass == SlantClass::Steep && front.floor.distance < 0 )
         {
-            front.floor.distance = -32767;
+            front.floor.distance = -32767; // This is not a typo, it is really -32767
         }
         else if( front.floor.distance > 0
             && (
@@ -78,13 +95,13 @@ namespace engine
         }
 
         // Front left
-        testPos = refTestPos + core::ExactTRCoordinates(frontLeftX, 0, frontLeftZ);
-        sector = level.findRealFloorSector(testPos.toInexact(), &room);
-        frontLeft.init(sector, testPos.toInexact(), level.m_cameraController, laraPos.Y, height);
+        testPos = refTestPos + core::TRCoordinates(frontLeftX, 0, frontLeftZ);
+        sector = level.findRealFloorSector(testPos, &room);
+        frontLeft.init(sector, testPos, level.m_cameraController, laraPos.Y, height);
 
         if( (policyFlags & SlopesAreWalls) != 0 && frontLeft.floor.slantClass == SlantClass::Steep && frontLeft.floor.distance < 0 )
         {
-            frontLeft.floor.distance = -32767;
+            frontLeft.floor.distance = -32767; // This is not a typo, it is really -32767
         }
         else if( frontLeft.floor.distance > 0
             && (
@@ -96,13 +113,13 @@ namespace engine
         }
 
         // Front right
-        testPos = refTestPos + core::ExactTRCoordinates(frontRightX, 0, frontRightZ);
-        sector = level.findRealFloorSector(testPos.toInexact(), &room);
-        frontRight.init(sector, testPos.toInexact(), level.m_cameraController, laraPos.Y, height);
+        testPos = refTestPos + core::TRCoordinates(frontRightX, 0, frontRightZ);
+        sector = level.findRealFloorSector(testPos, &room);
+        frontRight.init(sector, testPos, level.m_cameraController, laraPos.Y, height);
 
         if( (policyFlags & SlopesAreWalls) != 0 && frontRight.floor.slantClass == SlantClass::Steep && frontRight.floor.distance < 0 )
         {
-            frontRight.floor.distance = -32767;
+            frontRight.floor.distance = -32767; // This is not a typo, it is really -32767
         }
         else if( frontRight.floor.distance > 0
             && (
@@ -115,40 +132,40 @@ namespace engine
 
         checkStaticMeshCollisions(laraPos, height, level);
 
-        if( current.floor.distance == -loader::HeightLimit )
+        if( mid.floor.distance == -loader::HeightLimit )
         {
-            collisionFeedback = position - laraPos;
-            axisCollisions = AxisColl_FrontForwardBlocked;
+            shift = oldPosition - laraPos;
+            collisionType = AxisColl_FrontForwardBlocked;
             return;
         }
 
-        if( current.floor.distance <= current.ceiling.distance )
+        if( mid.floor.distance <= mid.ceiling.distance )
         {
-            axisCollisions = AxisColl_InvalidPosition;
-            collisionFeedback = position - laraPos;
+            collisionType = AxisColl_InvalidPosition;
+            shift = oldPosition - laraPos;
             return;
         }
 
-        if( current.ceiling.distance >= 0 )
+        if( mid.ceiling.distance >= 0 )
         {
-            axisCollisions = AxisColl_ScalpCollision;
-            collisionFeedback.Y = current.ceiling.distance;
+            collisionType = AxisColl_ScalpCollision;
+            shift.Y = mid.ceiling.distance;
         }
 
         if( front.floor.distance > passableFloorDistanceBottom || front.floor.distance < passableFloorDistanceTop || front.ceiling.distance > neededCeilingDistance )
         {
-            axisCollisions = AxisColl_FrontForwardBlocked;
-            switch( orientationAxis )
+            collisionType = AxisColl_FrontForwardBlocked;
+            switch( facingAxis )
             {
             case core::Axis::PosZ:
             case core::Axis::NegZ:
-                collisionFeedback.X = position.X - laraPos.X;
-                collisionFeedback.Z = reflectAtSectorBoundary(frontZ + laraPos.Z, laraPos.Z);
+                shift.X = oldPosition.X - laraPos.X;
+                shift.Z = reflectAtSectorBoundary(frontZ + laraPos.Z, laraPos.Z);
                 break;
             case core::Axis::PosX:
             case core::Axis::NegX:
-                collisionFeedback.X = reflectAtSectorBoundary(frontX + laraPos.X, laraPos.X);
-                collisionFeedback.Z = position.Z - laraPos.Z;
+                shift.X = reflectAtSectorBoundary(frontX + laraPos.X, laraPos.X);
+                shift.Z = oldPosition.Z - laraPos.Z;
                 break;
             }
             return;
@@ -156,23 +173,23 @@ namespace engine
 
         if( front.ceiling.distance >= neededCeilingDistance )
         {
-            axisCollisions = AxisColl_InsufficientFrontCeilingSpace;
-            collisionFeedback = position - laraPos;
+            collisionType = AxisColl_InsufficientFrontCeilingSpace;
+            shift = oldPosition - laraPos;
             return;
         }
 
         if( frontLeft.floor.distance > passableFloorDistanceBottom || frontLeft.floor.distance < passableFloorDistanceTop )
         {
-            axisCollisions = AxisColl_FrontLeftBlocked;
-            switch( orientationAxis )
+            collisionType = AxisColl_FrontLeftBlocked;
+            switch( facingAxis )
             {
             case core::Axis::PosZ:
             case core::Axis::NegZ:
-                collisionFeedback.X = reflectAtSectorBoundary(frontLeftX + laraPos.X, frontX + laraPos.X);
+                shift.X = reflectAtSectorBoundary(frontLeftX + laraPos.X, frontX + laraPos.X);
                 break;
             case core::Axis::PosX:
             case core::Axis::NegX:
-                collisionFeedback.Z = reflectAtSectorBoundary(frontLeftZ + laraPos.Z, frontZ + laraPos.Z);
+                shift.Z = reflectAtSectorBoundary(frontLeftZ + laraPos.Z, frontZ + laraPos.Z);
                 break;
             }
             return;
@@ -180,37 +197,37 @@ namespace engine
 
         if( frontRight.floor.distance > passableFloorDistanceBottom || frontRight.floor.distance < passableFloorDistanceTop )
         {
-            axisCollisions = AxisColl_FrontRightBlocked;
-            switch( orientationAxis )
+            collisionType = AxisColl_FrontRightBlocked;
+            switch( facingAxis )
             {
             case core::Axis::PosZ:
             case core::Axis::NegZ:
-                collisionFeedback.X = reflectAtSectorBoundary(frontRightX + laraPos.X, frontX + laraPos.X);
+                shift.X = reflectAtSectorBoundary(frontRightX + laraPos.X, frontX + laraPos.X);
                 break;
             case core::Axis::PosX:
             case core::Axis::NegX:
-                collisionFeedback.Z = reflectAtSectorBoundary(frontRightZ + laraPos.Z, frontZ + laraPos.Z);
+                shift.Z = reflectAtSectorBoundary(frontRightZ + laraPos.Z, frontZ + laraPos.Z);
                 break;
             }
         }
     }
 
-    std::set<const loader::Room*> CollisionInfo::collectNeighborRooms(const core::ExactTRCoordinates& position, int radius, int height, const level::Level& level)
+    std::set<const loader::Room*> CollisionInfo::collectNeighborRooms(const core::TRCoordinates& position, int radius, int height, const level::Level& level)
     {
         std::set<const loader::Room*> result;
         result.insert(level.m_lara->getCurrentRoom());
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(radius, 0, radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(-radius, 0, radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(radius, 0, -radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(-radius, 0, -radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(radius, -height, radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(-radius, -height, radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(radius, -height, -radius), level.m_lara->getCurrentRoom()));
-        result.insert(level.findRoomForPosition(position + core::ExactTRCoordinates(-radius, -height, -radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(radius, 0, radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(-radius, 0, radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(radius, 0, -radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(-radius, 0, -radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(radius, -height, radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(-radius, -height, radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(radius, -height, -radius), level.m_lara->getCurrentRoom()));
+        result.insert(level.findRoomForPosition(position + core::TRCoordinates(-radius, -height, -radius), level.m_lara->getCurrentRoom()));
         return result;
     }
 
-    bool CollisionInfo::checkStaticMeshCollisions(const core::ExactTRCoordinates& position, int height, const level::Level& level)
+    bool CollisionInfo::checkStaticMeshCollisions(const core::TRCoordinates& position, int height, const level::Level& level)
     {
         auto rooms = collectNeighborRooms(position, collisionRadius + 50, height + 50, level);
 
@@ -241,22 +258,22 @@ namespace engine
                 if( baseCollisionBox.max.z - meshCollisionBox.min.z < dz )
                     dz = -(baseCollisionBox.max.z - meshCollisionBox.min.z);
 
-                switch( orientationAxis )
+                switch( facingAxis )
                 {
                 case core::Axis::PosX:
                     if( dz > collisionRadius || dz < -collisionRadius )
                     {
-                        collisionFeedback.X = dx - 1;
-                        collisionFeedback.Z = this->position.Z - position.Z;
-                        axisCollisions = AxisColl_FrontForwardBlocked;
+                        shift.X = dx - 1;
+                        shift.Z = this->oldPosition.Z - position.Z;
+                        collisionType = AxisColl_FrontForwardBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
                     if( dz > 0 && dz <= collisionRadius )
                     {
-                        collisionFeedback.X = 0;
-                        collisionFeedback.Z = dz;
-                        axisCollisions = AxisColl_FrontRightBlocked;
+                        shift.X = 0;
+                        shift.Z = dz;
+                        collisionType = AxisColl_FrontRightBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
@@ -265,25 +282,25 @@ namespace engine
                         hasStaticMeshCollision = true;
                         return true;
                     }
-                    collisionFeedback.X = 0;
-                    collisionFeedback.Z = dz;
-                    axisCollisions = AxisColl_FrontLeftBlocked;
+                    shift.X = 0;
+                    shift.Z = dz;
+                    collisionType = AxisColl_FrontLeftBlocked;
                     hasStaticMeshCollision = true;
                     return true;
                 case core::Axis::PosZ:
                     if( dx > collisionRadius || dx < -collisionRadius )
                     {
-                        collisionFeedback.X = this->position.X - position.X;
-                        collisionFeedback.Z = dz - 1;
-                        axisCollisions = AxisColl_FrontForwardBlocked;
+                        shift.X = this->oldPosition.X - position.X;
+                        shift.Z = dz - 1;
+                        collisionType = AxisColl_FrontForwardBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
                     if( dx > 0 && dx <= collisionRadius )
                     {
-                        collisionFeedback.X = dx;
-                        collisionFeedback.Z = 0;
-                        axisCollisions = AxisColl_FrontLeftBlocked;
+                        shift.X = dx;
+                        shift.Z = 0;
+                        collisionType = AxisColl_FrontLeftBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
@@ -292,25 +309,25 @@ namespace engine
                         hasStaticMeshCollision = true;
                         return true;
                     }
-                    collisionFeedback.X = dx;
-                    collisionFeedback.Z = 0;
-                    axisCollisions = AxisColl_FrontRightBlocked;
+                    shift.X = dx;
+                    shift.Z = 0;
+                    collisionType = AxisColl_FrontRightBlocked;
                     hasStaticMeshCollision = true;
                     return true;
                 case core::Axis::NegX:
                     if( dz > collisionRadius || dz < -collisionRadius )
                     {
-                        collisionFeedback.X = dx + 1;
-                        collisionFeedback.Z = this->position.Z - position.Z;
-                        axisCollisions = AxisColl_FrontForwardBlocked;
+                        shift.X = dx + 1;
+                        shift.Z = this->oldPosition.Z - position.Z;
+                        collisionType = AxisColl_FrontForwardBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
                     if( dz > 0 && dz <= collisionRadius )
                     {
-                        collisionFeedback.X = 0;
-                        collisionFeedback.Z = dz;
-                        axisCollisions = AxisColl_FrontLeftBlocked;
+                        shift.X = 0;
+                        shift.Z = dz;
+                        collisionType = AxisColl_FrontLeftBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
@@ -319,25 +336,25 @@ namespace engine
                         hasStaticMeshCollision = true;
                         return true;
                     }
-                    collisionFeedback.X = 0;
-                    collisionFeedback.Z = dz;
-                    axisCollisions = AxisColl_FrontRightBlocked;
+                    shift.X = 0;
+                    shift.Z = dz;
+                    collisionType = AxisColl_FrontRightBlocked;
                     hasStaticMeshCollision = true;
                     return true;
                 case core::Axis::NegZ:
                     if( dx > collisionRadius || dx < -collisionRadius )
                     {
-                        collisionFeedback.X = this->position.X - position.X;
-                        collisionFeedback.Z = dz + 1;
-                        axisCollisions = AxisColl_FrontForwardBlocked;
+                        shift.X = this->oldPosition.X - position.X;
+                        shift.Z = dz + 1;
+                        collisionType = AxisColl_FrontForwardBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
                     if( dx > 0 && dx <= collisionRadius )
                     {
-                        collisionFeedback.X = dx;
-                        collisionFeedback.Z = 0;
-                        axisCollisions = AxisColl_FrontRightBlocked;
+                        shift.X = dx;
+                        shift.Z = 0;
+                        collisionType = AxisColl_FrontRightBlocked;
                         hasStaticMeshCollision = true;
                         return true;
                     }
@@ -346,9 +363,9 @@ namespace engine
                         hasStaticMeshCollision = true;
                         return true;
                     }
-                    collisionFeedback.X = dx;
-                    collisionFeedback.Z = 0;
-                    axisCollisions = AxisColl_FrontLeftBlocked;
+                    shift.X = dx;
+                    shift.Z = 0;
+                    collisionType = AxisColl_FrontLeftBlocked;
                     hasStaticMeshCollision = true;
                     return true;
                 }

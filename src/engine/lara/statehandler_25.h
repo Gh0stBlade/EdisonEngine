@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,29 +12,23 @@ namespace engine
         {
         public:
             explicit StateHandler_25(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::JumpBack)
+                : AbstractStateHandler(lara, LaraStateId::JumpBack)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 setCameraRotationY(135_deg);
                 if( getFallSpeed() > core::FreeFallSpeedThreshold )
                     setTargetState(LaraStateId::FreeFall);
-                else
-                    setTargetState(LaraStateId::JumpBack);
-
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 setMovementAngle(getRotation().Y + 180_deg);
-                return commonJumpHandling(collisionInfo);
+                commonJumpHandling(collisionInfo);
             }
         };
     }

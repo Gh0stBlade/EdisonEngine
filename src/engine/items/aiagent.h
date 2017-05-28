@@ -16,7 +16,7 @@ namespace engine
                     const std::string& name,
                     const gsl::not_null<const loader::Room*>& room,
                     const core::Angle& angle,
-                    const core::ExactTRCoordinates& position,
+                    const core::TRCoordinates& position,
                     const floordata::ActivationState& activationState,
                     Characteristics characteristics,
                     int16_t darkness,
@@ -82,7 +82,7 @@ namespace engine
 
             uint16_t m_requiredAnimState = 0;
             ai::Brain m_brain;
-            int m_health = 1000;
+            int m_health{ 1000 };
             const int m_collisionRadius;
             const uint16_t m_zone;
         };

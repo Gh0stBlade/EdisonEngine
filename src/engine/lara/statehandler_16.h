@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,16 +14,17 @@ namespace engine
         {
         public:
             explicit StateHandler_16(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::WalkBackward)
+                : AbstractStateHandler(lara, LaraStateId::WalkBackward)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getHealth() <= 0 )
                 {
                     setTargetState(LaraStateId::Stop);
-                    return {};
+                    return;
                 }
 
                 if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Backward && getLevel().m_inputHandler->getInputState().moveSlow )
@@ -30,41 +32,34 @@ namespace engine
                 else
                     setTargetState(LaraStateId::Stop);
 
-                return {};
-            }
-
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& deltaTime) override
-            {
                 if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left )
-                    subYRotationSpeed(deltaTime, 2.25_deg, -4_deg);
+                    subYRotationSpeed(2.25_deg, -4_deg);
                 else if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right )
-                    addYRotationSpeed(deltaTime, 2.25_deg, 4_deg);
+                    addYRotationSpeed(2.25_deg, 4_deg);
             }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(false);
                 collisionInfo.passableFloorDistanceBottom = core::ClimbLimit2ClickMin;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
-                collisionInfo.yAngle = getRotation().Y + 180_deg;
-                setMovementAngle(collisionInfo.yAngle);
+                collisionInfo.facingAngle = getRotation().Y + 180_deg;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.policyFlags |= CollisionInfo::SlopesAreWalls | CollisionInfo::SlopesArePits;
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                if( auto nextHandler = stopIfCeilingBlocked(collisionInfo) )
-                    return nextHandler;
+                if( stopIfCeilingBlocked(collisionInfo) )
+                    return;
 
-                auto nextHandler = checkWallCollision(collisionInfo);
-                if( nextHandler )
-                {
+                if( checkWallCollision(collisionInfo) )
                     setAnimIdGlobal(loader::AnimationId::STAY_SOLID, 185);
-                }
 
-                if( collisionInfo.current.floor.distance > loader::QuarterSectorSize && collisionInfo.current.floor.distance < core::ClimbLimit2ClickMin )
+                if( collisionInfo.mid.floor.distance > loader::QuarterSectorSize && collisionInfo.mid.floor.distance < core::ClimbLimit2ClickMin )
                 {
-                    if(getCurrentTime() < 964_frame || getCurrentTime() >= 994_frame)
+                    if( getCurrentFrame() < 964 || getCurrentFrame() > 993 )
                     {
                         setAnimIdGlobal(loader::AnimationId::WALK_DOWN_BACK_LEFT, 899);
                     }
@@ -74,12 +69,10 @@ namespace engine
                     }
                 }
 
-                if( !tryStartSlide(collisionInfo, nextHandler) )
+                if( !tryStartSlide(collisionInfo) )
                 {
                     placeOnFloor(collisionInfo);
                 }
-
-                return nextHandler;
             }
         };
     }

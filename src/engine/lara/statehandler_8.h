@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,34 +12,30 @@ namespace engine
         {
         public:
             explicit StateHandler_8(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::Death)
+                : AbstractStateHandler(lara, LaraStateId::Death)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& collisionInfo) override
+
+            void handleInput(CollisionInfo& collisionInfo) override
             {
                 collisionInfo.policyFlags &= ~(CollisionInfo::EnableBaddiePush | CollisionInfo::EnableSpaz);
-                return {};
             }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 collisionInfo.passableFloorDistanceBottom = core::ClimbLimit2ClickMin;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.collisionRadius = 400;
-                collisionInfo.yAngle = getRotation().Y;
-                setMovementAngle(collisionInfo.yAngle);
-                applyCollisionFeedback(collisionInfo);
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
+                applyShift(collisionInfo);
                 placeOnFloor(collisionInfo);
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
-                setHealth(core::makeInterpolatedValue(-1.0f));
-                //! @todo set air=-1
-                return {};
-            }
-
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
+                setHealth(-1);
+                setAir(-1);
             }
         };
     }

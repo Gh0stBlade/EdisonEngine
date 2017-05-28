@@ -20,6 +20,33 @@ namespace loader
 
 namespace engine
 {
+    struct BoundingBox
+    {
+        int16_t minX{0}, maxX{0};
+        int16_t minY{0}, maxY{0};
+        int16_t minZ{0}, maxZ{0};
+
+        explicit BoundingBox() = default;
+
+
+        BoundingBox(const BoundingBox& a, const BoundingBox& b, float bias)
+            : minX{static_cast<int16_t>(a.minX * (1 - bias) + b.minX * bias)}
+            , maxX{static_cast<int16_t>(a.maxX * (1 - bias) + b.maxX * bias)}
+            , minY{static_cast<int16_t>(a.minY * (1 - bias) + b.minY * bias)}
+            , maxY{static_cast<int16_t>(a.maxY * (1 - bias) + b.maxY * bias)}
+            , minZ{static_cast<int16_t>(a.minZ * (1 - bias) + b.minZ * bias)}
+            , maxZ{static_cast<int16_t>(a.maxZ * (1 - bias) + b.maxZ * bias)}
+        {
+        }
+
+
+        core::TRCoordinates getCenter() const
+        {
+            return {(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2};
+        }
+    };
+
+
     class SkeletalModelNode : public gameplay::Node
     {
     public:
@@ -29,10 +56,8 @@ namespace engine
 
         void updatePose();
 
-        void setAnimIdGlobal(size_t animId, size_t frame)
-        {
-            setAnimIdGlobalImpl(animId, frame, true);
-        }
+
+        void setAnimIdGlobal(size_t animId, size_t frame);
 
 
         size_t getAnimId() const noexcept
@@ -41,19 +66,9 @@ namespace engine
         }
 
 
-        enum class FrameChangeType
+        int getCurrentFrame() const
         {
-            NewFrame,
-            EndOfAnim
-        };
-
-
-        boost::optional<FrameChangeType> addTime(const std::chrono::microseconds& time);
-
-
-        const std::chrono::microseconds& getCurrentTime() const
-        {
-            return m_time;
+            return m_frame;
         }
 
 
@@ -72,19 +87,17 @@ namespace engine
         }
 
 
-        float calculateFloorSpeed() const;
-
+        int calculateFloorSpeed(int frameOffset = 0) const;
+        
         int getAccelleration() const;
 
-        void advanceFrame();
-
-        gameplay::BoundingBox getBoundingBox() const;
+        BoundingBox getBoundingBox() const;
 
 
         void resetPose()
         {
             m_bonePatches.clear();
-            m_bonePatches.resize( getChildCount(), glm::mat4{1.0f} );
+            m_bonePatches.resize(getChildCount(), glm::mat4{1.0f});
         }
 
 
@@ -100,17 +113,25 @@ namespace engine
         }
 
 
-        virtual void onFrameChanged(FrameChangeType frameChangeType) = 0;
-
-        std::chrono::microseconds getCurrentLocalTime() const
+        int getCurrentLocalFrame() const
         {
-            return m_time - getStartTime();
+            return m_frame - getStartFrame();
         }
+
+
+        virtual void update() = 0;
+
+    protected:
+        bool handleStateTransitions();
+
+        bool advanceFrame();
+
+        const loader::Animation& getCurrentAnimData() const;
 
     private:
         const gsl::not_null<const level::Level*> m_level;
         size_t m_animId = 0;
-        std::chrono::microseconds m_time = std::chrono::microseconds::zero();
+        uint16_t m_frame = 0;
         const loader::AnimatedModel& m_model;
         uint16_t m_targetState = 0;
         std::vector<glm::mat4> m_bonePatches;
@@ -120,26 +141,6 @@ namespace engine
 
         struct AnimFrame
         {
-            struct BBox
-            {
-                int16_t minX, maxX;
-                int16_t minY, maxY;
-                int16_t minZ, maxZ;
-
-
-                glm::vec3 getMinGl() const noexcept
-                {
-                    return glm::vec3( minX, minY, minZ );
-                }
-
-
-                glm::vec3 getMaxGl() const noexcept
-                {
-                    return glm::vec3( maxX, maxY, maxZ );
-                }
-            };
-
-
             struct Vec
             {
                 int16_t x, y, z;
@@ -147,12 +148,12 @@ namespace engine
 
                 glm::vec3 toGl() const noexcept
                 {
-                    return glm::vec3( x, -y, -z );
+                    return glm::vec3(x, -y, -z);
                 }
             };
 
 
-            BBox bbox;
+            BoundingBox bbox;
             Vec pos;
             uint16_t numValues;
 
@@ -180,14 +181,8 @@ namespace engine
 
         void updatePoseInterpolated(const InterpolationInfo& framepair);
 
-        const loader::Animation& getCurrentAnimData() const;
+        int getStartFrame() const;
 
-        std::chrono::microseconds getStartTime() const;
-
-        std::chrono::microseconds getEndTime() const;
-
-        bool handleTRTransitions();
-
-        void setAnimIdGlobalImpl(size_t animId, size_t frame, bool fireEvents);
+        int getEndFrame() const;
     };
 }

@@ -200,8 +200,6 @@ namespace gameplay
 
         /**
          * Sets whether multi-sampling is to be enabled/disabled. Default is disabled.
-         *
-         * @param enabled true sets multi-sampling to be enabled, false to be disabled.
          */
         inline void setMultiSampling(unsigned samples);
 
@@ -251,13 +249,7 @@ namespace gameplay
         virtual void render(bool wireframe = false);
 
     private:
-
-        /**
-         * Constructor.
-         *
-         * @param copy The game to copy.
-         */
-        Game(const Game& copy);
+        Game(const Game& copy) = delete;
 
         /**
          * Starts the game.

@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,50 +12,44 @@ namespace engine
         {
         public:
             explicit StateHandler_11(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::Reach)
+                : AbstractStateHandler(lara, LaraStateId::Reach)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 setCameraRotationY(85_deg);
                 if( getFallSpeed() > core::FreeFallSpeedThreshold )
                     setTargetState(LaraStateId::FreeFall);
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 setFalling(true);
-                collisionInfo.yAngle = getRotation().Y;
-                setMovementAngle(collisionInfo.yAngle);
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.passableFloorDistanceBottom = loader::HeightLimit;
                 collisionInfo.passableFloorDistanceTop = 0;
                 collisionInfo.neededCeilingDistance = 192;
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                auto nextHandler = tryReach(collisionInfo);
-                if( nextHandler )
-                    return nextHandler;
+                if( tryReach(collisionInfo) )
+                    return;
 
                 jumpAgainstWall(collisionInfo);
-                if( getFallSpeed() < 0 || collisionInfo.current.floor.distance > 0 )
-                    return nextHandler;
+                if( getFallSpeed() <= 0 || collisionInfo.mid.floor.distance > 0 )
+                    return;
 
                 if( applyLandingDamage() )
                     setTargetState(LaraStateId::Death);
                 else
                     setTargetState(LaraStateId::Stop);
 
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(false);
                 placeOnFloor(collisionInfo);
-
-                return nextHandler;
             }
         };
     }

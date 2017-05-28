@@ -10,8 +10,8 @@ namespace engine
     {
         void Block::onInteract(LaraNode& lara)
         {
-            if( !getLevel().m_inputHandler->getInputState().action || m_triggerState == engine::items::TriggerState::Enabled
-                || isFalling() || !util::fuzzyEqual(lara.getPosition().Y, getPosition().Y, 1.0f) )
+            if( !getLevel().m_inputHandler->getInputState().action || m_triggerState == TriggerState::Enabled
+                || isFalling() || lara.getPosition().Y != getPosition().Y )
                 return;
 
             static const InteractionLimits limits{
@@ -40,28 +40,28 @@ namespace engine
                     case core::Axis::PosZ:
                     {
                         auto pos = lara.getPosition();
-                        pos.Z = std::floor(pos.Z / loader::SectorSize) * loader::SectorSize + 924;
+                        pos.Z = (pos.Z / loader::SectorSize) * loader::SectorSize + 924;
                         lara.setPosition(pos);
                         break;
                     }
                     case core::Axis::PosX:
                     {
                         auto pos = lara.getPosition();
-                        pos.X = std::floor(pos.X / loader::SectorSize) * loader::SectorSize + 924;
+                        pos.X = (pos.X / loader::SectorSize) * loader::SectorSize + 924;
                         lara.setPosition(pos);
                         break;
                     }
                     case core::Axis::NegZ:
                     {
                         auto pos = lara.getPosition();
-                        pos.Z = std::floor(pos.Z / loader::SectorSize) * loader::SectorSize + 100;
+                        pos.Z = (pos.Z / loader::SectorSize) * loader::SectorSize + 100;
                         lara.setPosition(pos);
                         break;
                     }
                     case core::Axis::NegX:
                     {
                         auto pos = lara.getPosition();
-                        pos.X = std::floor(pos.X / loader::SectorSize) * loader::SectorSize + 100;
+                        pos.X = (pos.X / loader::SectorSize) * loader::SectorSize + 100;
                         lara.setPosition(pos);
                         break;
                     }
@@ -71,14 +71,14 @@ namespace engine
 
                 lara.setYRotation(getRotation().Y);
                 lara.setTargetState(loader::LaraStateId::PushableGrab);
-                lara.advanceFrame();
+                lara.updateImpl();
                 if( lara.getCurrentAnimState() == loader::LaraStateId::PushableGrab )
                     lara.setHandStatus(1);
                 return;
             }
 
             if( lara.getCurrentAnimState() != loader::LaraStateId::PushableGrab
-                || core::toFrame(lara.getCurrentTime()) != 2091 || !limits.canInteract(*this, lara) )
+                || lara.getCurrentFrame() != 2091 || !limits.canInteract(*this, lara) )
                 return;
 
             if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Forward )
@@ -104,11 +104,11 @@ namespace engine
 
             activate();
             loader::Room::patchHeightsForBlock(*this, loader::SectorSize);
-            m_triggerState = engine::items::TriggerState::Enabled;
+            m_triggerState = TriggerState::Enabled;
         }
 
 
-        void Block::onFrameChanged(FrameChangeType frameChangeType)
+        void Block::update()
         {
             if(m_activationState.isOneshot())
             {
@@ -118,11 +118,11 @@ namespace engine
                 return;
             }
 
-            ItemNode::onFrameChanged(frameChangeType);
+            ItemNode::update();
 
             auto pos = getRoomBoundPosition();
             auto sector = getLevel().findRealFloorSector(pos);
-            auto height = HeightInfo::fromFloor(sector, pos.position.toInexact(), getLevel().m_cameraController)
+            auto height = HeightInfo::fromFloor(sector, pos.position, getLevel().m_cameraController)
                 .distance;
             if( height > pos.position.Y )
             {
@@ -133,32 +133,31 @@ namespace engine
                 pos.position.Y = height;
                 setPosition(pos.position);
                 setFalling(false);
-                m_triggerState = engine::items::TriggerState::Activated;
+                m_triggerState = TriggerState::Activated;
                 //! @todo Shake camera
                 playSoundEffect(70);
             }
 
             setCurrentRoom(pos.room);
 
-            if( m_triggerState != engine::items::TriggerState::Activated )
+            if( m_triggerState != TriggerState::Activated )
                 return;
 
-            m_triggerState = engine::items::TriggerState::Disabled;
+            m_triggerState = TriggerState::Disabled;
             deactivate();
             loader::Room::patchHeightsForBlock(*this, -loader::SectorSize);
             pos = getRoomBoundPosition();
             sector = getLevel().findRealFloorSector(pos);
-            HeightInfo hi = HeightInfo::fromFloor(sector, pos.position.toInexact(), getLevel().m_cameraController);
+            HeightInfo hi = HeightInfo::fromFloor(sector, pos.position, getLevel().m_cameraController);
             getLevel().m_lara->handleCommandSequence(hi.lastCommandSequenceOrDeath, true);
         }
 
 
         bool Block::isOnFloor(int height) const
         {
-            auto sector = getLevel().findRealFloorSector(getPosition().toInexact(), getCurrentRoom());
+            auto sector = getLevel().findRealFloorSector(getPosition(), getCurrentRoom());
             return sector->floorHeight == -127
-                || util::fuzzyEqual(gsl::narrow_cast<float>(sector->floorHeight * loader::QuarterSectorSize),
-                                    getPosition().Y - height, 1.0f);
+                || sector->floorHeight * loader::QuarterSectorSize == getPosition().Y - height;
         }
 
 
@@ -187,19 +186,18 @@ namespace engine
             }
 
             CollisionInfo tmp;
-            tmp.orientationAxis = axis;
+            tmp.facingAxis = axis;
             tmp.collisionRadius = 500;
             if( tmp.checkStaticMeshCollisions(pos, 1000, getLevel()) )
                 return false;
 
-            auto targetSector = getLevel().findRealFloorSector(pos.toInexact(), getCurrentRoom());
-            if( !util::fuzzyEqual(gsl::narrow_cast<float>(targetSector->floorHeight * loader::QuarterSectorSize),
-                                  pos.Y, 1.0f) )
+            auto targetSector = getLevel().findRealFloorSector(pos, getCurrentRoom());
+            if( targetSector->floorHeight * loader::QuarterSectorSize != pos.Y )
                 return false;
 
             pos.Y -= height;
             return pos.Y
-                >= getLevel().findRealFloorSector(pos.toInexact(), getCurrentRoom())->ceilingHeight
+                >= getLevel().findRealFloorSector(pos, getCurrentRoom())->ceilingHeight
                 * loader::QuarterSectorSize;
         }
 
@@ -229,21 +227,20 @@ namespace engine
             }
 
             auto room = getCurrentRoom();
-            auto sector = getLevel().findRealFloorSector(pos.toInexact(), &room);
+            auto sector = getLevel().findRealFloorSector(pos, &room);
 
             CollisionInfo tmp;
-            tmp.orientationAxis = axis;
+            tmp.facingAxis = axis;
             tmp.collisionRadius = 500;
             if( tmp.checkStaticMeshCollisions(pos, 1000, getLevel()) )
                 return false;
 
-            if( !util::fuzzyEqual(gsl::narrow_cast<float>(sector->floorHeight * loader::QuarterSectorSize), pos.Y,
-                                  1.0f) )
+            if( sector->floorHeight * loader::QuarterSectorSize != pos.Y )
                 return false;
 
             auto topPos = pos;
             topPos.Y -= height;
-            auto topSector = getLevel().findRealFloorSector(topPos.toInexact(), getCurrentRoom());
+            auto topSector = getLevel().findRealFloorSector(topPos, getCurrentRoom());
             if( topPos.Y < topSector->ceilingHeight * loader::QuarterSectorSize )
                 return false;
 
@@ -266,13 +263,12 @@ namespace engine
                     break;
             }
 
-            sector = getLevel().findRealFloorSector(laraPos.toInexact(), &room);
-            if( !util::fuzzyEqual(gsl::narrow_cast<float>(sector->floorHeight * loader::QuarterSectorSize), pos.Y,
-                                  1.0f) )
+            sector = getLevel().findRealFloorSector(laraPos, &room);
+            if( sector->floorHeight * loader::QuarterSectorSize != pos.Y )
                 return false;
 
             laraPos.Y -= core::ScalpHeight;
-            sector = getLevel().findRealFloorSector(laraPos.toInexact(), &room);
+            sector = getLevel().findRealFloorSector(laraPos, &room);
             if( laraPos.Y < sector->ceilingHeight * loader::QuarterSectorSize )
                 return false;
 
@@ -281,19 +277,19 @@ namespace engine
             {
                 case core::Axis::PosZ:
                     laraPos.Z -= loader::SectorSize;
-                    tmp.orientationAxis = core::Axis::NegZ;
+                    tmp.facingAxis = core::Axis::NegZ;
                     break;
                 case core::Axis::PosX:
                     laraPos.X -= loader::SectorSize;
-                    tmp.orientationAxis = core::Axis::NegX;
+                    tmp.facingAxis = core::Axis::NegX;
                     break;
                 case core::Axis::NegZ:
                     laraPos.Z += loader::SectorSize;
-                    tmp.orientationAxis = core::Axis::PosZ;
+                    tmp.facingAxis = core::Axis::PosZ;
                     break;
                 case core::Axis::NegX:
                     laraPos.X += loader::SectorSize;
-                    tmp.orientationAxis = core::Axis::PosX;
+                    tmp.facingAxis = core::Axis::PosX;
                     break;
                 default:
                     break;

@@ -31,22 +31,22 @@ namespace engine
                            const std::string& name,
                            const gsl::not_null<const loader::Room*>& room,
                            const core::Angle& angle,
-                           const core::ExactTRCoordinates& position,
+                           const core::TRCoordinates& position,
                            const floordata::ActivationState& activationState,
                            bool hasProcessAnimCommandsOverride,
                            Characteristics characteristics,
                            int16_t darkness,
                            const loader::AnimatedModel& animatedModel)
             : SkeletalModelNode(name, level, animatedModel)
-              , m_position(room, position)
-              , m_rotation(0_deg, angle, 0_deg)
-              , m_level(level)
-              , m_activationState(activationState)
-              , m_hasProcessAnimCommandsOverride(hasProcessAnimCommandsOverride)
-              , m_characteristics(characteristics)
-              , m_darkness{darkness}
+            , m_position(room, position)
+            , m_rotation(0_deg, angle, 0_deg)
+            , m_level(level)
+            , m_activationState(activationState)
+            , m_hasProcessAnimCommandsOverride(hasProcessAnimCommandsOverride)
+            , m_characteristics(characteristics)
+            , m_darkness{darkness}
         {
-            BOOST_ASSERT(room->isInnerPositionXZ(position.toInexact()));
+            BOOST_ASSERT(room->isInnerPositionXZ(position));
 
             if( m_activationState.isOneshot() )
             {
@@ -56,7 +56,7 @@ namespace engine
             if( m_activationState.isOneshot() )
             {
                 m_activationState.setOneshot(false);
-                m_triggerState = engine::items::TriggerState::Locked;
+                m_triggerState = TriggerState::Locked;
             }
 
             if( m_activationState.isFullyActivated() )
@@ -64,7 +64,7 @@ namespace engine
                 m_activationState.fullyDeactivate();
                 m_activationState.setInverted(true);
                 activate();
-                m_triggerState = engine::items::TriggerState::Enabled;
+                m_triggerState = TriggerState::Enabled;
             }
         }
 
@@ -89,18 +89,60 @@ namespace engine
         }
 
 
-        void ItemNode::onFrameChanged(FrameChangeType frameChangeType)
+        void ItemNode::update()
         {
+            const auto endOfAnim = advanceFrame();
+
             m_flags2_10_isHit = false;
 
-            const loader::Animation& animation = getLevel().m_animations[getAnimId()];
-            if( animation.animCommandCount <= 0 )
+            if( endOfAnim )
             {
-                return;
+                const loader::Animation& animation = getCurrentAnimData();
+                BOOST_ASSERT(animation.animCommandCount == 0 || animation.animCommandIndex < getLevel().m_animCommands.size());
+                const auto* cmd = animation.animCommandCount == 0 ? nullptr : &getLevel().m_animCommands[animation.animCommandIndex];
+                for( uint16_t i = 0; i < animation.animCommandCount; ++i )
+                {
+                    BOOST_ASSERT(cmd < &getLevel().m_animCommands.back());
+                    const auto opcode = static_cast<AnimCommandOpcode>(*cmd);
+                    ++cmd;
+                    switch( opcode )
+                    {
+                        case AnimCommandOpcode::SetPosition:
+                            moveLocal(
+                                cmd[0],
+                                cmd[1],
+                                cmd[2]
+                            );
+                            cmd += 3;
+                            break;
+                        case AnimCommandOpcode::StartFalling:
+                            m_fallSpeed = cmd[0];
+                            m_horizontalSpeed = cmd[1];
+                            m_falling = true;
+                            cmd += 2;
+                            break;
+                        case AnimCommandOpcode::PlaySound:
+                            cmd += 2;
+                            break;
+                        case AnimCommandOpcode::PlayEffect:
+                            cmd += 2;
+                            break;
+                        case AnimCommandOpcode::Kill:
+                            m_triggerState = TriggerState::Activated;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                const loader::Animation& currentAnim = getCurrentAnimData();
+                setAnimIdGlobal(currentAnim.nextAnimation, currentAnim.nextFrame);
+                setTargetState(getCurrentState());
             }
 
-            BOOST_ASSERT(animation.animCommandIndex < getLevel().m_animCommands.size());
-            const auto* cmd = &getLevel().m_animCommands[animation.animCommandIndex];
+            const loader::Animation& animation = getCurrentAnimData();
+            BOOST_ASSERT(animation.animCommandCount == 0 || animation.animCommandIndex < getLevel().m_animCommands.size());
+            const auto* cmd = animation.animCommandCount == 0 ? nullptr : &getLevel().m_animCommands[animation.animCommandIndex];
             for( uint16_t i = 0; i < animation.animCommandCount; ++i )
             {
                 BOOST_ASSERT(cmd < &getLevel().m_animCommands.back());
@@ -109,40 +151,23 @@ namespace engine
                 switch( opcode )
                 {
                     case AnimCommandOpcode::SetPosition:
-                        if( frameChangeType == FrameChangeType::EndOfAnim )
-                        {
-                            moveLocal(
-                                cmd[0],
-                                cmd[1],
-                                cmd[2]
-                                     );
-                        }
                         cmd += 3;
                         break;
-                    case AnimCommandOpcode::SetVelocity:
-                        if( frameChangeType == FrameChangeType::EndOfAnim )
-                        {
-                            m_fallSpeed = cmd[0];
-                            m_falling = true;
-                            m_horizontalSpeed = cmd[1];
-                        }
+                    case AnimCommandOpcode::StartFalling:
                         cmd += 2;
                         break;
-                    case AnimCommandOpcode::EmptyHands:
-                        break;
                     case AnimCommandOpcode::PlaySound:
-                        if( frameChangeType == FrameChangeType::NewFrame
-                            && core::toFrame(getCurrentTime()) == cmd[0] )
+                        if( getCurrentFrame() == cmd[0] )
                         {
                             playSoundEffect(cmd[1]);
                         }
                         cmd += 2;
                         break;
                     case AnimCommandOpcode::PlayEffect:
-                        if( core::toFrame(getCurrentTime()) == cmd[0] )
+                        if( getCurrentFrame() == cmd[0] )
                         {
                             BOOST_LOG_TRIVIAL(debug) << "Anim effect: " << int(cmd[1]);
-                            if( frameChangeType == FrameChangeType::NewFrame && cmd[1] == 0 )
+                            if( cmd[1] == 0 )
                             {
                                 addYRotation(180_deg);
                             }
@@ -154,16 +179,12 @@ namespace engine
                         }
                         cmd += 2;
                         break;
-                    case AnimCommandOpcode::Kill:
-                        if( frameChangeType == FrameChangeType::EndOfAnim )
-                        {
-                            m_triggerState = engine::items::TriggerState::Activated;
-                        }
-                        break;
                     default:
                         break;
                 }
             }
+
+            applyMovement(false);
         }
 
 
@@ -171,7 +192,7 @@ namespace engine
         {
             if( !m_hasProcessAnimCommandsOverride )
             {
-                m_triggerState = engine::items::TriggerState::Disabled;
+                m_triggerState = TriggerState::Disabled;
                 return;
             }
 
@@ -221,12 +242,12 @@ namespace engine
                 return false;
             }
 
-            if( m_triggerState != engine::items::TriggerState::Enabled )
+            if( m_triggerState != TriggerState::Enabled )
             {
                 return false;
             }
 
-            m_triggerState = engine::items::TriggerState::Activated;
+            m_triggerState = TriggerState::Activated;
             return true;
         }
 
@@ -234,10 +255,11 @@ namespace engine
         void ItemNode::updateSounds()
         {
             decltype(m_sounds) cleaned;
-            std::copy_if(m_sounds.begin(), m_sounds.end(), std::inserter(cleaned, cleaned.end()),
-                         [](const std::weak_ptr<audio::SourceHandle>& h) {
-                             return h.expired();
-                         });
+            std::copy_if(m_sounds.begin(), m_sounds.end(), inserter(cleaned, cleaned.end()),
+                         [](const std::weak_ptr<audio::SourceHandle>& h)
+                     {
+                         return h.expired();
+                     });
 
             m_sounds = std::move(cleaned);
 
@@ -266,20 +288,23 @@ namespace engine
         }
 
 
-        void ItemNode::update(const std::chrono::microseconds& deltaTime)
+        void ItemNode::applyMovement(bool forLara)
         {
-            updateImpl(deltaTime, addTime(deltaTime));
-
             if( m_falling )
             {
-                m_horizontalSpeed.add(getAccelleration(), deltaTime);
                 if( getFallSpeed() >= 128 )
                 {
-                    m_fallSpeed.add(1, deltaTime);
+                    m_fallSpeed += 1;
                 }
                 else
                 {
-                    m_fallSpeed.add(6, deltaTime);
+                    m_fallSpeed += 6;
+                }
+
+                if( forLara )
+                {
+                    // we only add accelleration here
+                    m_horizontalSpeed += calculateFloorSpeed(0) - calculateFloorSpeed(-1);
                 }
             }
             else
@@ -288,10 +313,10 @@ namespace engine
             }
 
             move(
-                getMovementAngle().sin() * m_horizontalSpeed.getScaled(deltaTime),
-                m_falling ? m_fallSpeed.getScaled(deltaTime) : 0,
-                getMovementAngle().cos() * m_horizontalSpeed.getScaled(deltaTime)
-                );
+                getMovementAngle().sin() * m_horizontalSpeed,
+                m_falling ? m_fallSpeed : 0,
+                getMovementAngle().cos() * m_horizontalSpeed
+            );
 
             applyTransform();
 
@@ -302,7 +327,7 @@ namespace engine
 
         boost::optional<uint16_t> ItemNode::getCurrentBox() const
         {
-            auto sector = m_position.room->getInnerSectorByAbsolutePosition(m_position.position.toInexact());
+            auto sector = m_position.room->getInnerSectorByAbsolutePosition(m_position.position);
             if( sector->boxIndex == 0xffff )
             {
                 BOOST_LOG_TRIVIAL(warning) << "Not within a box: " << getId();

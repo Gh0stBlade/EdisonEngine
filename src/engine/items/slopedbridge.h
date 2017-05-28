@@ -16,7 +16,7 @@ namespace engine
                          const std::string& name,
                          const gsl::not_null<const loader::Room*>& room,
                          const core::Angle& angle,
-                         const core::ExactTRCoordinates& position,
+                         const core::TRCoordinates& position,
                          const floordata::ActivationState& activationState,
                          int16_t darkness,
                          const loader::AnimatedModel& animatedModel,
@@ -27,32 +27,22 @@ namespace engine
             }
 
 
-            void updateImpl(const std::chrono::microseconds& /*deltaTime*/, const boost::optional<FrameChangeType>& /*frameChangeType*/) override final
-            {
-            }
-
-
             void onInteract(LaraNode& /*lara*/) override final
             {
             }
 
 
-            void onFrameChanged(FrameChangeType /*frameChangeType*/) override
+            void patchFloor(const core::TRCoordinates& pos, int& y) override final
             {
-            }
-
-
-            void patchFloor(const core::TRCoordinates& pos, long& y) override final
-            {
-                auto tmp = std::lround(getPosition().Y + getBridgeSlopeHeight(pos) / m_div);
+                auto tmp = getPosition().Y + getBridgeSlopeHeight(pos) / m_div;
                 if( pos.Y <= tmp )
                     y = tmp;
             }
 
 
-            void patchCeiling(const core::TRCoordinates& pos, long& y) override final
+            void patchCeiling(const core::TRCoordinates& pos, int& y) override final
             {
-                auto tmp = std::lround(getPosition().Y + getBridgeSlopeHeight(pos) / m_div);
+                auto tmp = getPosition().Y + getBridgeSlopeHeight(pos) / m_div;
                 if( pos.Y <= tmp )
                     return;
 
@@ -60,8 +50,14 @@ namespace engine
             }
 
 
+            void update() override final
+            {
+                ItemNode::update();
+            }
+
+
         private:
-            long getBridgeSlopeHeight(const core::TRCoordinates& pos) const
+            int getBridgeSlopeHeight(const core::TRCoordinates& pos) const
             {
                 auto axis = core::axisFromAngle(getRotation().Y, 1_deg);
                 Expects( axis.is_initialized() );
@@ -85,7 +81,7 @@ namespace engine
                          const std::string& name,
                          const gsl::not_null<const loader::Room*>& room,
                          const core::Angle& angle,
-                         const core::ExactTRCoordinates& position,
+                         const core::TRCoordinates& position,
                          const floordata::ActivationState& activationState,
                          int16_t darkness,
                          const loader::AnimatedModel& animatedModel)
@@ -102,7 +98,7 @@ namespace engine
                          const std::string& name,
                          const gsl::not_null<const loader::Room*>& room,
                          const core::Angle& angle,
-                         const core::ExactTRCoordinates& position,
+                         const core::TRCoordinates& position,
                          const floordata::ActivationState& activationState,
                          int16_t darkness,
                          const loader::AnimatedModel& animatedModel)

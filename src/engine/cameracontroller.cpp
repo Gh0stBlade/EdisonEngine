@@ -13,15 +13,15 @@ namespace engine
         : m_camera(camera)
         , m_level(level)
         , m_laraController(laraController)
-        , m_cameraYOffset(gsl::narrow_cast<int>(laraController->getPosition().Y - 1024))
-        , m_pivot(laraController->getCurrentRoom(), m_laraController->getPosition().toInexact())
+        , m_cameraYOffset(laraController->getPosition().Y - 1024)
+        , m_pivot(laraController->getCurrentRoom(), m_laraController->getPosition())
         , m_currentPosition(laraController->getCurrentRoom())
     {
         m_pivot.position.Y -= m_cameraYOffset;
         m_currentPosition = m_pivot;
         m_currentPosition.position.Z -= 100;
 
-        update(std::chrono::microseconds(1));
+        update();
     }
 
 
@@ -54,14 +54,14 @@ namespace engine
         if( m_camOverrideType == CamOverrideType::FreeLook || m_camOverrideType == CamOverrideType::_3 || condition == floordata::SequenceCondition::LaraInCombatMode )
             return;
 
-        if( condition == floordata::SequenceCondition::ItemActivated && activationRequest.getTimeout() != std::chrono::microseconds::zero() && switchIsOn )
+        if( condition == floordata::SequenceCondition::ItemActivated && activationRequest.getTimeout() != 0 && switchIsOn )
             return;
 
         if( condition != floordata::SequenceCondition::ItemActivated && m_camOverrideId == m_activeCamOverrideId )
             return;
 
         if( camParams.timeout != 1 )
-            m_camOverrideTimeout = std::chrono::seconds(camParams.timeout);
+            m_camOverrideTimeout = camParams.timeout * core::FrameRate;
 
         if( camParams.oneshot )
             m_level->m_cameras[camId].setActive(true);
@@ -99,7 +99,7 @@ namespace engine
                 else
                 {
                     m_camOverrideId = m_activeCamOverrideId;
-                    if( m_camOverrideTimeout >= std::chrono::microseconds::zero() && m_camOverrideType != CamOverrideType::FreeLook && m_camOverrideType != CamOverrideType::_3 )
+                    if( m_camOverrideTimeout >= 0 && m_camOverrideType != CamOverrideType::FreeLook && m_camOverrideType != CamOverrideType::_3 )
                     {
                         type = CamOverrideType::NotActivatedByLara;
                         m_camOverrideType = CamOverrideType::NotActivatedByLara;
@@ -107,7 +107,7 @@ namespace engine
                     else
                     {
                         type = CamOverrideType::None;
-                        m_camOverrideTimeout = std::chrono::microseconds(-1);
+                        m_camOverrideTimeout = -1;
                     }
                 }
             }
@@ -198,7 +198,7 @@ namespace engine
     }
 
 
-    CameraController::ClampType CameraController::clampAlongX(core::RoomBoundIntPosition& origin) const
+    CameraController::ClampType CameraController::clampAlongX(core::RoomBoundPosition& origin) const
     {
         if( m_pivot.position.X == origin.position.X )
         {
@@ -231,7 +231,7 @@ namespace engine
                 origin.room = newRoom;
                 return ClampType::None;
             }
-            else if( sign < 0 && testPos.X <= origin.position.X )
+            if( sign < 0 && testPos.X <= origin.position.X )
             {
                 origin.room = newRoom;
                 return ClampType::None;
@@ -263,7 +263,7 @@ namespace engine
     }
 
 
-    CameraController::ClampType CameraController::clampAlongZ(core::RoomBoundIntPosition& origin) const
+    CameraController::ClampType CameraController::clampAlongZ(core::RoomBoundPosition& origin) const
     {
         if( m_pivot.position.Z == origin.position.Z )
         {
@@ -297,7 +297,7 @@ namespace engine
                 origin.room = newRoom;
                 return ClampType::None;
             }
-            else if( sign < 0 && testPos.Z <= origin.position.Z )
+            if( sign < 0 && testPos.Z <= origin.position.Z )
             {
                 origin.room = newRoom;
                 return ClampType::None;
@@ -329,7 +329,7 @@ namespace engine
     }
 
 
-    bool CameraController::clampPosition(core::RoomBoundIntPosition& goalPosition) const
+    bool CameraController::clampPosition(core::RoomBoundPosition& goalPosition) const
     {
         //BOOST_ASSERT(m_pivot.room->isInnerPositionXZ(m_pivot.goalPosition));
 
@@ -356,7 +356,7 @@ namespace engine
     }
 
 
-    void CameraController::update(const std::chrono::microseconds& deltaTime)
+    void CameraController::update()
     {
         m_globalRotation.X = util::clamp(m_globalRotation.X, -85_deg, +85_deg);
 
@@ -384,7 +384,7 @@ namespace engine
             return;
         }
 
-        if( m_unknown1 != CamOverrideType::FreeLook)
+        if( m_unknown1 != CamOverrideType::FreeLook )
             HeightInfo::skipSteepSlants = true;
 
         const bool lookingAtSomething = m_itemOfInterest != nullptr && (m_camOverrideType == CamOverrideType::NotActivatedByLara || m_camOverrideType == CamOverrideType::ActivatedByLara);
@@ -393,9 +393,9 @@ namespace engine
         auto lookAtBbox = lookAtItem->getBoundingBox();
         int lookAtY = gsl::narrow_cast<int>(lookAtItem->getPosition().Y);
         if( lookingAtSomething )
-            lookAtY += (lookAtBbox.min.y + lookAtBbox.max.y) / 2;
+            lookAtY += (lookAtBbox.minY + lookAtBbox.maxY) / 2;
         else
-            lookAtY += (lookAtBbox.min.y - lookAtBbox.max.y) * 3 / 4 + lookAtBbox.max.y;
+            lookAtY += (lookAtBbox.minY - lookAtBbox.maxY) * 3 / 4 + lookAtBbox.maxY;
 
         if( m_itemOfInterest != nullptr && !lookingAtSomething )
         {
@@ -405,28 +405,28 @@ namespace engine
             auto lookAtYAngle = core::Angle::fromAtan(m_itemOfInterest->getPosition().X - lookAtItem->getPosition().X, m_itemOfInterest->getPosition().Z - lookAtItem->getPosition().Z) - lookAtItem->getRotation().Y;
             lookAtYAngle *= 0.5f;
             lookAtBbox = m_itemOfInterest->getBoundingBox();
-            auto lookAtXAngle = core::Angle::fromAtan(distToLookAt, lookAtY - (lookAtBbox.min.y + lookAtBbox.max.y) / 2 + m_itemOfInterest->getPosition().Y);
+            auto lookAtXAngle = core::Angle::fromAtan(distToLookAt, lookAtY - (lookAtBbox.minY + lookAtBbox.maxY) / 2 + m_itemOfInterest->getPosition().Y);
             lookAtXAngle *= 0.5f;
 
             if( lookAtYAngle < 50_deg && lookAtYAngle > -50_deg && lookAtXAngle < 85_deg && lookAtXAngle > -85_deg )
             {
-                lookAtYAngle -= m_headRotation.Y;
+                lookAtYAngle -= m_laraController->m_headRotation.Y;
                 if( lookAtYAngle > 4_deg )
-                    m_headRotation.Y += core::makeInterpolatedValue(+4_deg).getScaled(deltaTime);
+                    m_laraController->m_headRotation.Y += 4_deg;
                 else if( lookAtYAngle < -4_deg )
-                    m_headRotation.Y -= core::makeInterpolatedValue(+4_deg).getScaled(deltaTime);
+                    m_laraController->m_headRotation.Y -= 4_deg;
                 else
-                    m_headRotation.Y += core::makeInterpolatedValue(lookAtYAngle).getScaled(deltaTime);
-                m_torsoRotation.Y = m_headRotation.Y;
+                    m_laraController->m_headRotation.Y += lookAtYAngle;
+                m_laraController->m_torsoRotation.Y = m_laraController->m_headRotation.Y;
 
-                lookAtXAngle -= m_headRotation.X;
+                lookAtXAngle -= m_laraController->m_headRotation.X;
                 if( lookAtXAngle > 4_deg )
-                    m_headRotation.X += core::makeInterpolatedValue(+4_deg).getScaled(deltaTime);
+                    m_laraController->m_headRotation.X += 4_deg;
                 else if( lookAtXAngle < -4_deg )
-                    m_headRotation.X -= core::makeInterpolatedValue(+4_deg).getScaled(deltaTime);
+                    m_laraController->m_headRotation.X -= 4_deg;
                 else
-                    m_headRotation.X += core::makeInterpolatedValue(lookAtXAngle).getScaled(deltaTime);
-                m_torsoRotation.X = m_headRotation.X;
+                    m_laraController->m_headRotation.X += lookAtXAngle;
+                m_laraController->m_torsoRotation.X = m_laraController->m_headRotation.X;
 
                 m_camOverrideType = CamOverrideType::FreeLook;
                 m_itemOfInterest->m_flags2_40_alreadyLookedAt = true;
@@ -437,14 +437,14 @@ namespace engine
 
         if( m_camOverrideType != CamOverrideType::FreeLook && m_camOverrideType != CamOverrideType::_3 )
         {
-            m_pivot.position.X = std::lround(lookAtItem->getPosition().X);
-            m_pivot.position.Z = std::lround(lookAtItem->getPosition().Z);
+            m_pivot.position.X = lookAtItem->getPosition().X;
+            m_pivot.position.Z = lookAtItem->getPosition().Z;
 
             if( m_unknown1 == CamOverrideType::NotActivatedByLara )
             {
-                const auto midZ = (lookAtBbox.min.z + lookAtBbox.max.z) / 2;
-                m_pivot.position.Z += std::lround(midZ * lookAtItem->getRotation().Y.cos());
-                m_pivot.position.X += std::lround(midZ * lookAtItem->getRotation().Y.sin());
+                const auto midZ = (lookAtBbox.minZ + lookAtBbox.maxZ) / 2;
+                m_pivot.position.Z += midZ * lookAtItem->getRotation().Y.cos();
+                m_pivot.position.X += midZ * lookAtItem->getRotation().Y.sin();
             }
 
             if( m_lookingAtSomething == lookingAtSomething )
@@ -464,10 +464,10 @@ namespace engine
             if( HeightInfo::fromFloor(sector, m_pivot.position, this).distance < m_pivot.position.Y )
                 HeightInfo::skipSteepSlants = false;
 
-            if( m_camOverrideType != CamOverrideType::None && m_unknown1 != CamOverrideType::_3)
-                handleCamOverride(deltaTime);
+            if( m_camOverrideType != CamOverrideType::None && m_unknown1 != CamOverrideType::_3 )
+                handleCamOverride();
             else
-                doUsualMovement(lookAtItem, deltaTime);
+                doUsualMovement(lookAtItem);
         }
         else
         {
@@ -486,14 +486,14 @@ namespace engine
             }
             m_lookingAtSomething = false;
             if( m_camOverrideType == CamOverrideType::FreeLook )
-                handleFreeLook(*lookAtItem, deltaTime);
+                handleFreeLook(*lookAtItem);
             else
-                handleEnemy(*lookAtItem, deltaTime);
+                handleEnemy(*lookAtItem);
         }
 
         m_lookingAtSomething = lookingAtSomething;
         m_activeCamOverrideId = m_camOverrideId;
-        if( m_camOverrideType != CamOverrideType::ActivatedByLara || m_camOverrideTimeout < std::chrono::microseconds::zero() )
+        if( m_camOverrideType != CamOverrideType::ActivatedByLara || m_camOverrideTimeout < 0 )
         {
             m_camOverrideType = CamOverrideType::None;
             m_previousItemOfInterest = m_itemOfInterest;
@@ -509,12 +509,12 @@ namespace engine
     }
 
 
-    void CameraController::handleCamOverride(const std::chrono::microseconds& deltaTime)
+    void CameraController::handleCamOverride()
     {
         Expects(m_camOverrideId >= 0 && gsl::narrow_cast<size_t>(m_camOverrideId) < m_level->m_cameras.size());
         Expects(m_level->m_cameras[m_camOverrideId].room < m_level->m_rooms.size());
 
-        core::RoomBoundIntPosition pos(&m_level->m_rooms[m_level->m_cameras[m_camOverrideId].room]);
+        core::RoomBoundPosition pos(&m_level->m_rooms[m_level->m_cameras[m_camOverrideId].room]);
         pos.position.X = m_level->m_cameras[m_camOverrideId].x;
         pos.position.Y = m_level->m_cameras[m_camOverrideId].y;
         pos.position.Z = m_level->m_cameras[m_camOverrideId].z;
@@ -523,16 +523,17 @@ namespace engine
             moveIntoGeometry(pos, loader::QuarterSectorSize);
 
         m_lookingAtSomething = true;
-        updatePosition(pos, m_pivotMovementSmoothness, deltaTime);
+        updatePosition(pos, m_pivotMovementSmoothness);
 
-        if( m_camOverrideTimeout > deltaTime )
-            m_camOverrideTimeout -= deltaTime;
+        //! @todo Check condition
+        if( m_camOverrideTimeout > 1 )
+            --m_camOverrideTimeout;
         else
-            m_camOverrideTimeout = std::chrono::microseconds(-1);
+            m_camOverrideTimeout = -1;
     }
 
 
-    int CameraController::moveIntoGeometry(core::RoomBoundIntPosition& pos, int margin) const
+    int CameraController::moveIntoGeometry(core::RoomBoundPosition& pos, int margin) const
     {
         auto sector = m_level->findRealFloorSector(pos);
         Expects(sector->boxIndex < m_level->m_boxes.size());
@@ -555,10 +556,9 @@ namespace engine
 
         if( pos.position.Y > bottom )
             return bottom - pos.position.Y;
-        else if( top > pos.position.Y )
+        if( top > pos.position.Y )
             return top - pos.position.Y;
-        else
-            return 0;
+        return 0;
     }
 
 
@@ -571,11 +571,11 @@ namespace engine
     }
 
 
-    void CameraController::updatePosition(const core::RoomBoundIntPosition& goalPosition, int smoothFactor, const std::chrono::microseconds& deltaTime)
+    void CameraController::updatePosition(const core::RoomBoundPosition& goalPosition, int smoothFactor)
     {
-        m_currentPosition.position.X += (goalPosition.position.X - m_currentPosition.position.X) * core::toFloatFrame(deltaTime) / smoothFactor;
-        m_currentPosition.position.Y += (goalPosition.position.Y - m_currentPosition.position.Y) * core::toFloatFrame(deltaTime) / smoothFactor;
-        m_currentPosition.position.Z += (goalPosition.position.Z - m_currentPosition.position.Z) * core::toFloatFrame(deltaTime) / smoothFactor;
+        m_currentPosition.position.X += (goalPosition.position.X - m_currentPosition.position.X) / smoothFactor;
+        m_currentPosition.position.Y += (goalPosition.position.Y - m_currentPosition.position.Y) / smoothFactor;
+        m_currentPosition.position.Z += (goalPosition.position.Z - m_currentPosition.position.Z) / smoothFactor;
         HeightInfo::skipSteepSlants = false;
         m_currentPosition.room = goalPosition.room;
         auto sector = m_level->findRealFloorSector(m_currentPosition);
@@ -624,7 +624,7 @@ namespace engine
     }
 
 
-    void CameraController::doUsualMovement(const gsl::not_null<const items::ItemNode*>& item, const std::chrono::microseconds& deltaTimeMs)
+    void CameraController::doUsualMovement(const gsl::not_null<const items::ItemNode*>& item)
     {
         m_globalRotation.X += item->getRotation().X;
         if( m_globalRotation.X > 85_deg )
@@ -633,62 +633,62 @@ namespace engine
             m_globalRotation.X = -85_deg;
 
         auto dist = m_globalRotation.X.cos() * m_pivotDistance;
-        m_flatPivotDistanceSq = gsl::narrow_cast<long>(dist * dist);
+        m_flatPivotDistanceSq = gsl::narrow_cast<int>(dist * dist);
 
-        core::RoomBoundIntPosition targetPos(m_currentPosition.room);
-        targetPos.position.Y = std::lround(m_pivotDistance * m_globalRotation.X.sin() + m_pivot.position.Y);
+        core::RoomBoundPosition targetPos(m_currentPosition.room);
+        targetPos.position.Y = m_pivotDistance * m_globalRotation.X.sin() + m_pivot.position.Y;
 
         core::Angle y = m_globalRotation.Y + item->getRotation().Y;
-        targetPos.position.X = std::lround(m_pivot.position.X - dist * y.sin());
-        targetPos.position.Z = std::lround(m_pivot.position.Z - dist * y.cos());
-        clampBox(targetPos, [this](long& a, long& b, long c, long d, long e, long f, long g, long h)
-                 {
-                     clampToCorners(m_flatPivotDistanceSq, a, b, c, d, e, f, g, h);
-                 });
+        targetPos.position.X = m_pivot.position.X - dist * y.sin();
+        targetPos.position.Z = m_pivot.position.Z - dist * y.cos();
+        clampBox(targetPos, [this](int& a, int& b, int c, int d, int e, int f, int g, int h)
+             {
+                 clampToCorners(m_flatPivotDistanceSq, a, b, c, d, e, f, g, h);
+             });
 
-        updatePosition(targetPos, m_lookingAtSomething ? m_pivotMovementSmoothness : 12, deltaTimeMs);
+        updatePosition(targetPos, m_lookingAtSomething ? m_pivotMovementSmoothness : 12);
     }
 
 
-    void CameraController::handleFreeLook(const items::ItemNode& item, const std::chrono::microseconds& deltaTime)
+    void CameraController::handleFreeLook(const items::ItemNode& item)
     {
         const auto originalPivotPosition = m_pivot.position;
-        m_pivot.position.X = std::lround(item.getPosition().X);
-        m_pivot.position.Z = std::lround(item.getPosition().Z);
-        m_globalRotation.X = m_torsoRotation.X + m_headRotation.X + item.getRotation().X;
-        m_globalRotation.Y = m_torsoRotation.Y + m_headRotation.Y + item.getRotation().Y;
+        m_pivot.position.X = item.getPosition().X;
+        m_pivot.position.Z = item.getPosition().Z;
+        m_globalRotation.X = m_laraController->m_torsoRotation.X + m_laraController->m_headRotation.X + item.getRotation().X;
+        m_globalRotation.Y = m_laraController->m_torsoRotation.Y + m_laraController->m_headRotation.Y + item.getRotation().Y;
         m_pivotDistance = 1536;
         m_cameraYOffset = gsl::narrow_cast<int>(-2 * loader::QuarterSectorSize * m_globalRotation.Y.sin());
-        m_pivot.position.X += std::lround(m_cameraYOffset * item.getRotation().Y.sin());
-        m_pivot.position.Z += std::lround(m_cameraYOffset * item.getRotation().Y.cos());
+        m_pivot.position.X += m_cameraYOffset * item.getRotation().Y.sin();
+        m_pivot.position.Z += m_cameraYOffset * item.getRotation().Y.cos();
 
         if( isVerticallyOutsideRoom(m_pivot.position, m_currentPosition.room) )
         {
-            m_pivot.position.X = std::lround(item.getPosition().X);
-            m_pivot.position.Z = std::lround(item.getPosition().Z);
+            m_pivot.position.X = item.getPosition().X;
+            m_pivot.position.Z = item.getPosition().Z;
         }
 
         m_pivot.position.Y += moveIntoGeometry(m_pivot, loader::QuarterSectorSize + 50);
 
         auto cameraPosition = m_pivot;
-        cameraPosition.position.X -= std::lround(m_pivotDistance * m_globalRotation.Y.sin() * m_globalRotation.X.cos());
-        cameraPosition.position.Z -= std::lround(m_pivotDistance * m_globalRotation.Y.cos() * m_globalRotation.X.cos());
-        cameraPosition.position.Y += std::lround(m_pivotDistance * m_globalRotation.X.sin());
+        cameraPosition.position.X -= m_pivotDistance * m_globalRotation.Y.sin() * m_globalRotation.X.cos();
+        cameraPosition.position.Z -= m_pivotDistance * m_globalRotation.Y.cos() * m_globalRotation.X.cos();
+        cameraPosition.position.Y += m_pivotDistance * m_globalRotation.X.sin();
         cameraPosition.room = m_currentPosition.room;
 
         clampBox(cameraPosition, &freeLookClamp);
 
-        m_pivot.position.X = originalPivotPosition.X + (m_pivot.position.X - originalPivotPosition.X) * core::toFloatFrame(deltaTime) / m_pivotMovementSmoothness;
-        m_pivot.position.Z = originalPivotPosition.Z + (m_pivot.position.Z - originalPivotPosition.Z) * core::toFloatFrame(deltaTime) / m_pivotMovementSmoothness;
+        m_pivot.position.X = originalPivotPosition.X + (m_pivot.position.X - originalPivotPosition.X) / m_pivotMovementSmoothness;
+        m_pivot.position.Z = originalPivotPosition.Z + (m_pivot.position.Z - originalPivotPosition.Z) / m_pivotMovementSmoothness;
 
-        updatePosition(cameraPosition, m_pivotMovementSmoothness, deltaTime);
+        updatePosition(cameraPosition, m_pivotMovementSmoothness);
     }
 
 
-    void CameraController::handleEnemy(const items::ItemNode& item, const std::chrono::microseconds& deltaTime)
+    void CameraController::handleEnemy(const items::ItemNode& item)
     {
-        m_pivot.position.X = std::lround(item.getPosition().X);
-        m_pivot.position.Z = std::lround(item.getPosition().Z);
+        m_pivot.position.X = item.getPosition().X;
+        m_pivot.position.Z = item.getPosition().Z;
 
         if( m_enemy != nullptr )
         {
@@ -697,27 +697,27 @@ namespace engine
         }
         else
         {
-            m_globalRotation.X = m_torsoRotation.X + m_headRotation.X + item.getRotation().X;
-            m_globalRotation.Y = m_torsoRotation.Y + m_headRotation.Y + item.getRotation().Y;
+            m_globalRotation.X = m_laraController->m_torsoRotation.X + m_laraController->m_headRotation.X + item.getRotation().X;
+            m_globalRotation.Y = m_laraController->m_torsoRotation.Y + m_laraController->m_headRotation.Y + item.getRotation().Y;
         }
 
         m_pivotDistance = 2560;
         auto tmp = m_pivot;
         auto d = m_pivotDistance * m_globalRotation.X.cos();
-        tmp.position.X -= std::lround(d * m_globalRotation.Y.sin());
-        tmp.position.Z -= std::lround(d * m_globalRotation.Y.cos());
-        tmp.position.Y += std::lround(m_pivotDistance * m_globalRotation.X.sin());
+        tmp.position.X -= d * m_globalRotation.Y.sin();
+        tmp.position.Z -= d * m_globalRotation.Y.cos();
+        tmp.position.Y += m_pivotDistance * m_globalRotation.X.sin();
         tmp.room = m_currentPosition.room;
 
-        clampBox(tmp, [this](long& a, long& b, long c, long d, long e, long f, long g, long h)
-                 {
-                     clampToCorners(m_flatPivotDistanceSq, a, b, c, d, e, f, g, h);
-                 });
-        updatePosition(tmp, m_pivotMovementSmoothness, deltaTime);
+        clampBox(tmp, [this](int& a, int& b, int c, int d, int e, int f, int g, int h)
+             {
+                 clampToCorners(m_flatPivotDistanceSq, a, b, c, d, e, f, g, h);
+             });
+        updatePosition(tmp, m_pivotMovementSmoothness);
     }
 
 
-    void CameraController::clampBox(core::RoomBoundIntPosition& goalPosition, const std::function<ClampCallback>& callback) const
+    void CameraController::clampBox(core::RoomBoundPosition& goalPosition, const std::function<ClampCallback>& callback) const
     {
         clampPosition(goalPosition);
         BOOST_ASSERT(m_pivot.room->getSectorByAbsolutePosition(m_pivot.position)->boxIndex < m_level->m_boxes.size());
@@ -790,7 +790,7 @@ namespace engine
         if( negZverticalOutside && goalPosition.position.Z < clampZMin )
         {
             skipRoomPatch = false;
-            long left, right;
+            int left, right;
             if( goalPosition.position.X >= m_pivot.position.X )
             {
                 left = clampXMin;
@@ -807,7 +807,7 @@ namespace engine
         else if( posZverticalOutside && goalPosition.position.Z > clampZMax )
         {
             skipRoomPatch = false;
-            long left, right;
+            int left, right;
             if( goalPosition.position.X >= m_pivot.position.X )
             {
                 left = clampXMin;
@@ -831,7 +831,7 @@ namespace engine
         if( negXverticalOutside && goalPosition.position.X < clampXMin )
         {
             skipRoomPatch = false;
-            long left, right;
+            int left, right;
             if( goalPosition.position.Z >= m_pivot.position.Z )
             {
                 left = clampZMin;
@@ -848,7 +848,7 @@ namespace engine
         else if( posXverticalOutside && goalPosition.position.X > clampXMax )
         {
             skipRoomPatch = false;
-            long left, right;
+            int left, right;
             if( goalPosition.position.Z >= m_pivot.position.Z )
             {
                 left = clampZMin;
@@ -870,7 +870,7 @@ namespace engine
     }
 
 
-    void CameraController::freeLookClamp(long& currentFrontBack, long& currentLeftRight, long targetFrontBack, long targetLeftRight, long back, long right, long front, long left)
+    void CameraController::freeLookClamp(int& currentFrontBack, int& currentLeftRight, int targetFrontBack, int targetLeftRight, int back, int right, int front, int left)
     {
         if( (front > back) != (targetFrontBack < back) )
         {
@@ -885,7 +885,7 @@ namespace engine
     }
 
 
-    void CameraController::clampToCorners(const long pivotDistanceSq, long& currentFrontBack, long& currentLeftRight, long targetFrontBack, long targetLeftRight, long back, long right, long front, long left)
+    void CameraController::clampToCorners(const int pivotDistanceSq, int& currentFrontBack, int& currentLeftRight, int targetFrontBack, int targetLeftRight, int back, int right, int front, int left)
     {
         const auto targetRightDistSq = (targetLeftRight - right) * (targetLeftRight - right);
         const auto targetBackDistSq = (targetFrontBack - back) * (targetFrontBack - back);
@@ -899,7 +899,7 @@ namespace engine
             currentFrontBack = back;
             if( pivotDistanceSq >= targetBackDistSq )
             {
-                auto tmp = std::lround(std::sqrt(pivotDistanceSq - targetBackDistSq));
+                auto tmp = std::sqrt(pivotDistanceSq - targetBackDistSq);
                 if( right < left )
                     tmp = -tmp;
                 currentLeftRight = tmp + targetLeftRight;
@@ -924,7 +924,7 @@ namespace engine
             currentFrontBack = back;
             if( pivotDistanceSq >= targetBackDistSq )
             {
-                auto tmp = std::lround(std::sqrt(pivotDistanceSq - targetBackDistSq));
+                auto tmp = std::sqrt(pivotDistanceSq - targetBackDistSq);
                 if( right >= left )
                     tmp = -tmp;
                 currentLeftRight = tmp + targetLeftRight;
@@ -950,7 +950,7 @@ namespace engine
             if( pivotDistanceSq >= targetRightDistSq )
             {
                 currentLeftRight = right;
-                auto tmp = std::lround(std::sqrt(pivotDistanceSq - targetRightDistSq));
+                auto tmp = std::sqrt(pivotDistanceSq - targetRightDistSq);
                 if( back >= front )
                     tmp = -tmp;
                 currentFrontBack = tmp + targetFrontBack;

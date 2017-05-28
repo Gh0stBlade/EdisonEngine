@@ -17,24 +17,24 @@ namespace core
 {
     struct TRCoordinates
     {
-        long X = 0, Y = 0, Z = 0;
+        int X = 0, Y = 0, Z = 0;
 
         TRCoordinates() = default;
         TRCoordinates(const TRCoordinates&) = default;
 
 
         explicit TRCoordinates(const glm::vec3& v)
-            : X(std::lround(v.x))
-            , Y(-std::lround(v.y))
-            , Z(-std::lround(v.z))
+            : X{ gsl::narrow<int>(v.x) }
+            , Y{ -gsl::narrow<int>(v.y) }
+            , Z{ -gsl::narrow<int>(v.z) }
         {
         }
 
 
-        TRCoordinates(long x, long y, long z)
-            : X(x)
-            , Y(y)
-            , Z(z)
+        TRCoordinates(int x, int y, int z)
+            : X{ x }
+            , Y{ y }
+            , Z{ z }
         {
         }
 
@@ -76,132 +76,14 @@ namespace core
         {
             return {gsl::narrow_cast<float>(X), -gsl::narrow_cast<float>(Y), -gsl::narrow_cast<float>(Z)};
         }
-    };
 
 
-    struct ExactTRCoordinates
-    {
-        float X = 0, Y = 0, Z = 0;
-
-        ExactTRCoordinates() = default;
-        ExactTRCoordinates(const ExactTRCoordinates&) = default;
-
-
-        explicit ExactTRCoordinates(const glm::vec3& v)
-            : X(v.x)
-            , Y(-v.y)
-            , Z(-v.z)
+        int distanceTo(const TRCoordinates& rhs) const
         {
-        }
-
-
-        explicit ExactTRCoordinates(const TRCoordinates& v)
-            : X(float(v.X))
-            , Y(float(v.Y))
-            , Z(float(v.Z))
-        {
-        }
-
-
-        ExactTRCoordinates(float x, float y, float z)
-            : X(x)
-            , Y(y)
-            , Z(z)
-        {
-        }
-
-
-        ExactTRCoordinates operator-(const ExactTRCoordinates& rhs) const noexcept
-        {
-            return {X - rhs.X, Y - rhs.Y, Z - rhs.Z};
-        }
-
-
-        ExactTRCoordinates& operator-=(const ExactTRCoordinates& rhs) noexcept
-        {
-            X -= rhs.X;
-            Y -= rhs.Y;
-            Z -= rhs.Z;
-            return *this;
-        }
-
-
-        ExactTRCoordinates operator+(const ExactTRCoordinates& rhs) const noexcept
-        {
-            return {X + rhs.X, Y + rhs.Y, Z + rhs.Z};
-        }
-
-
-        ExactTRCoordinates& operator+=(const ExactTRCoordinates& rhs) noexcept
-        {
-            X += rhs.X;
-            Y += rhs.Y;
-            Z += rhs.Z;
-            return *this;
-        }
-
-
-        ExactTRCoordinates operator*(float f) const noexcept
-        {
-            return {X * f, Y * f, Z * f};
-        }
-
-
-        ExactTRCoordinates& operator*=(float f) noexcept
-        {
-            X *= f;
-            Y *= f;
-            Z *= f;
-            return *this;
-        }
-
-
-        ExactTRCoordinates operator/(float f) const noexcept
-        {
-            return {X / f, Y / f, Z / f};
-        }
-
-
-        ExactTRCoordinates& operator/=(float f) noexcept
-        {
-            X /= f;
-            Y /= f;
-            Z /= f;
-            return *this;
-        }
-
-
-        ExactTRCoordinates& operator=(const ExactTRCoordinates& rhs)
-        {
-            X = rhs.X;
-            Y = rhs.Y;
-            Z = rhs.Z;
-            return *this;
-        }
-
-
-        glm::vec3 toRenderSystem() const noexcept
-        {
-            return {X, -Y, -Z};
-        }
-
-
-        TRCoordinates toInexact() const noexcept
-        {
-            return {std::lround(X), std::lround(Y), std::lround(Z)};
-        }
-
-
-        float distanceTo(const ExactTRCoordinates& b) const
-        {
-            auto d = *this - b;
-            return std::sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
-        }
-
-
-        bool operator==(const ExactTRCoordinates& rhs) const
-        {
-            return X==rhs.X && Y==rhs.Y && Z==rhs.Z;
+            const auto dx = gsl::narrow<float>(X - rhs.X);
+            const auto dy = gsl::narrow<float>(Y - rhs.Y);
+            const auto dz = gsl::narrow<float>(Z - rhs.Z);
+            return static_cast<int>(std::sqrt(dx*dx + dy*dy + dz*dz));
         }
     };
 
@@ -209,26 +91,12 @@ namespace core
     struct RoomBoundPosition
     {
         gsl::not_null<const loader::Room*> room;
-        ExactTRCoordinates position;
-
-
-        explicit RoomBoundPosition(const gsl::not_null<const loader::Room*>& r, const ExactTRCoordinates& pos = {})
-            : room(r)
-            , position(pos)
-        {
-        }
-    };
-
-
-    struct RoomBoundIntPosition
-    {
-        gsl::not_null<const loader::Room*> room;
         TRCoordinates position;
 
 
-        explicit RoomBoundIntPosition(const gsl::not_null<const loader::Room*>& r, const TRCoordinates& pos = {})
-            : room(r)
-            , position(pos)
+        explicit RoomBoundPosition(const gsl::not_null<const loader::Room*>& r, const TRCoordinates& pos = {})
+            : room{ r }
+            , position{ pos }
         {
         }
     };

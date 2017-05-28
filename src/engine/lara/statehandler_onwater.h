@@ -7,6 +7,7 @@
 
 #include "engine/laranode.h"
 
+
 namespace engine
 {
     namespace lara
@@ -15,109 +16,105 @@ namespace engine
         {
         public:
             explicit StateHandler_OnWater(LaraNode& lara, LaraStateId id)
-                    : AbstractStateHandler(lara, id)
+                : AbstractStateHandler(lara, id)
             {
             }
 
+
         protected:
-            boost::optional<LaraStateId> commonOnWaterHandling(CollisionInfo& collisionInfo)
+            void commonOnWaterHandling(CollisionInfo& collisionInfo)
             {
-                collisionInfo.yAngle = getMovementAngle();
-                collisionInfo.initHeightInfo(getPosition() + core::ExactTRCoordinates(0, 700, 0), getLevel(), 700);
-                applyCollisionFeedback(collisionInfo);
-                if( collisionInfo.current.floor.distance < 0
-                    || collisionInfo.axisCollisions == CollisionInfo::AxisColl_InvalidPosition
-                    || collisionInfo.axisCollisions == CollisionInfo::AxisColl_InsufficientFrontCeilingSpace
-                    || collisionInfo.axisCollisions == CollisionInfo::AxisColl_ScalpCollision
-                    || collisionInfo.axisCollisions == CollisionInfo::AxisColl_FrontForwardBlocked
-                        )
+                collisionInfo.facingAngle = getMovementAngle();
+                collisionInfo.initHeightInfo(getPosition() + core::TRCoordinates(0, 700, 0), getLevel(), 700);
+                applyShift(collisionInfo);
+                if( collisionInfo.mid.floor.distance < 0
+                    || (collisionInfo.collisionType & (CollisionInfo::AxisColl_InvalidPosition|CollisionInfo::AxisColl_InsufficientFrontCeilingSpace|CollisionInfo::AxisColl_ScalpCollision|CollisionInfo::AxisColl_FrontForwardBlocked)) != 0
+                    )
                 {
-                    setFallSpeed(core::makeInterpolatedValue(0.0f));
-                    setPosition(collisionInfo.position);
+                    setFallSpeed(0);
+                    setPosition(collisionInfo.oldPosition);
                 }
                 else
                 {
-                    if( collisionInfo.axisCollisions == CollisionInfo::AxisColl_FrontLeftBlocked )
-                        m_yRotationSpeed = 5_deg;
-                    else if( collisionInfo.axisCollisions == CollisionInfo::AxisColl_FrontRightBlocked )
-                        m_yRotationSpeed = -5_deg;
-                    else
-                        m_yRotationSpeed = 0_deg;
+                    if( collisionInfo.collisionType == CollisionInfo::AxisColl_FrontLeftBlocked )
+                        getLara().addYRotation(5_deg);
+                    else if( collisionInfo.collisionType == CollisionInfo::AxisColl_FrontRightBlocked )
+                        getLara().addYRotation(-5_deg);
                 }
 
                 auto wsh = getLara().getWaterSurfaceHeight();
-                if( wsh && *wsh > getPosition().Y - 100 )
+                if( wsh.is_initialized() && *wsh > getPosition().Y - 100 )
                 {
-                    return tryClimbOutOfWater(collisionInfo);
+                    tryClimbOutOfWater(collisionInfo);
+                    return;
                 }
 
-                setTargetState(LaraStateId::UnderwaterForward);
                 setAnimIdGlobal(loader::AnimationId::FREE_FALL_TO_UNDERWATER_ALTERNATE, 2041);
+                setTargetState(LaraStateId::UnderwaterForward);
                 setXRotation(-45_deg);
-                setFallSpeed(core::makeInterpolatedValue(80.0f));
+                setFallSpeed(80);
                 setUnderwaterState(UnderwaterState::Diving);
-                return LaraStateId::UnderwaterDiving;
             }
 
+
         private:
-            boost::optional<LaraStateId> tryClimbOutOfWater(CollisionInfo& collisionInfo)
+            void tryClimbOutOfWater(CollisionInfo& collisionInfo)
             {
                 if( getMovementAngle() != getRotation().Y )
-                    return {};
+                    return;
 
-                if( collisionInfo.axisCollisions != CollisionInfo::AxisColl_FrontForwardBlocked )
-                    return {};
+                if( collisionInfo.collisionType != CollisionInfo::AxisColl_FrontForwardBlocked )
+                    return;
 
                 if( !getLevel().m_inputHandler->getInputState().action )
-                    return {};
+                    return;
 
                 const auto gradient = std::abs(collisionInfo.frontLeft.floor.distance - collisionInfo.frontRight.floor.distance);
                 if( gradient >= core::MaxGrabbableGradient )
-                    return {};
+                    return;
 
                 if( collisionInfo.front.ceiling.distance > 0 )
-                    return {};
+                    return;
 
-                if( collisionInfo.current.ceiling.distance > -core::ClimbLimit2ClickMin )
-                    return {};
+                if( collisionInfo.mid.ceiling.distance > -core::ClimbLimit2ClickMin )
+                    return;
 
                 if( collisionInfo.front.floor.distance + 700 <= -2 * loader::QuarterSectorSize )
-                    return {};
+                    return;
 
                 if( collisionInfo.front.floor.distance + 700 > 100 )
-                    return {};
+                    return;
 
-                const auto yRot = core::alignRotation(getRotation().Y, 35_deg);
-                if( !yRot )
-                    return {};
+                const auto yRot = alignRotation(getRotation().Y, 35_deg);
+                if( !yRot.is_initialized() )
+                    return;
 
-                setPosition(getPosition() + core::ExactTRCoordinates(0, 695 + gsl::narrow_cast<float>(collisionInfo.front.floor.distance), 0));
+                setPosition(getPosition() + core::TRCoordinates(0, 695 + collisionInfo.front.floor.distance, 0));
                 getLara().updateFloorHeight(-381);
-                core::ExactTRCoordinates d = getPosition();
+                core::TRCoordinates d = getPosition();
                 if( *yRot == 0_deg )
-                    d.Z = (std::floor(getPosition().Z / loader::SectorSize) + 1) * loader::SectorSize + 100;
+                    d.Z = (getPosition().Z / loader::SectorSize + 1) * loader::SectorSize + 100;
                 else if( *yRot == 180_deg )
-                    d.Z = (std::floor(getPosition().Z / loader::SectorSize) + 0) * loader::SectorSize - 100;
+                    d.Z = (getPosition().Z / loader::SectorSize + 0) * loader::SectorSize - 100;
                 else if( *yRot == -90_deg )
-                    d.X = (std::floor(getPosition().X / loader::SectorSize) + 0) * loader::SectorSize - 100;
+                    d.X = (getPosition().X / loader::SectorSize + 0) * loader::SectorSize - 100;
                 else if( *yRot == 90_deg )
-                    d.X = (std::floor(getPosition().X / loader::SectorSize) + 1) * loader::SectorSize + 100;
+                    d.X = (getPosition().X / loader::SectorSize + 1) * loader::SectorSize + 100;
                 else
                     throw std::runtime_error("Unexpected angle value");
 
                 setPosition(d);
 
-                setTargetState(LaraStateId::Stop);
                 setAnimIdGlobal(loader::AnimationId::CLIMB_OUT_OF_WATER, 1849);
-                setHorizontalSpeed(core::makeInterpolatedValue(0.0f));
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setTargetState(LaraStateId::Stop);
+                setHorizontalSpeed(0);
+                setFallSpeed(0);
                 setFalling(false);
                 setXRotation(0_deg);
                 setYRotation(*yRot);
                 setZRotation(0_deg);
                 setHandStatus(1);
                 setUnderwaterState(UnderwaterState::OnLand);
-                return LaraStateId::OnWaterExit;
             }
         };
     }

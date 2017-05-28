@@ -6,9 +6,9 @@ namespace engine
 {
     namespace items
     {
-        void TrapDoorUp::onFrameChanged(FrameChangeType frameChangeType)
+        void TrapDoorUp::update()
         {
-            ItemNode::onFrameChanged( frameChangeType );
+            ItemNode::update();
             auto pos = getRoomBoundPosition();
             getLevel().findRealFloorSector( pos );
             setCurrentRoom( pos.room );

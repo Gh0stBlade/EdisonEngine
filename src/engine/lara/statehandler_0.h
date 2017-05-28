@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -14,17 +15,23 @@ namespace engine
         public:
 
             explicit StateHandler_0(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::WalkForward)
+                : AbstractStateHandler(lara, LaraStateId::WalkForward)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getHealth() <= 0 )
                 {
                     setTargetState(LaraStateId::Stop);
-                    return {};
+                    return;
                 }
+
+                if (getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left)
+                    subYRotationSpeed(2.25_deg, -4_deg);
+                else if (getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right)
+                    addYRotationSpeed(2.25_deg, 4_deg);
 
                 if( getLevel().m_inputHandler->getInputState().zMovement == AxisMovement::Forward )
                 {
@@ -37,46 +44,35 @@ namespace engine
                 {
                     setTargetState(LaraStateId::Stop);
                 }
-
-                return {};
             }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& deltaTime) override
-            {
-                if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left )
-                    subYRotationSpeed(deltaTime, 2.25_deg, -4_deg);
-                else if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right )
-                    addYRotationSpeed(deltaTime, 2.25_deg, 4_deg);
-            }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(false);
-                collisionInfo.yAngle = getRotation().Y;
-                setMovementAngle(collisionInfo.yAngle);
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.passableFloorDistanceBottom = core::ClimbLimit2ClickMin;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.policyFlags |= CollisionInfo::SlopesAreWalls | CollisionInfo::SlopesArePits | CollisionInfo::LavaIsPit;
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                auto nextHandler = stopIfCeilingBlocked(collisionInfo);
-                if( nextHandler )
-                    return nextHandler;
-                nextHandler = tryClimb(collisionInfo);
-                if( nextHandler )
-                    return nextHandler;
+                if( stopIfCeilingBlocked(collisionInfo) )
+                    return;
 
-                nextHandler = checkWallCollision(collisionInfo);
-                if( nextHandler.is_initialized() )
+                if( tryClimb(collisionInfo) )
+                    return;
+
+                if( checkWallCollision(collisionInfo) )
                 {
-                    const auto fr = getCurrentTime();
-                    if( fr >= 29_frame && fr < 48_frame)
+                    const auto fr = getCurrentFrame();
+                    if( fr >= 29 && fr <= 47 )
                     {
                         setAnimIdGlobal(loader::AnimationId::END_WALK_LEFT, 74);
                     }
-                    else if( (fr >= 22_frame && fr < 29_frame) || (fr >= 48_frame && fr < 58_frame) )
+                    else if( (fr >= 22 && fr <= 28) || (fr >= 48 && fr <= 57) )
                     {
                         setAnimIdGlobal(loader::AnimationId::END_WALK_RIGHT, 58);
                     }
@@ -86,19 +82,18 @@ namespace engine
                     }
                 }
 
-                if( collisionInfo.current.floor.distance > core::ClimbLimit2ClickMin )
+                if( collisionInfo.mid.floor.distance > core::ClimbLimit2ClickMin )
                 {
                     setAnimIdGlobal(loader::AnimationId::FREE_FALL_FORWARD, 492);
-                    nextHandler = LaraStateId::JumpForward;
                     setTargetState(LaraStateId::JumpForward);
-                    setFallSpeed(core::makeInterpolatedValue(0.0f));
+                    setFallSpeed(0);
                     setFalling(true);
                 }
 
-                if( collisionInfo.current.floor.distance > core::SteppableHeight )
+                if( collisionInfo.mid.floor.distance > core::SteppableHeight )
                 {
-                    const auto fr = getCurrentTime();
-                    if( fr < 28_frame || fr >= 46_frame)
+                    const auto fr = getCurrentFrame();
+                    if( fr < 28 || fr > 45 )
                     {
                         setAnimIdGlobal(loader::AnimationId::WALK_DOWN_RIGHT, 887);
                     }
@@ -108,10 +103,10 @@ namespace engine
                     }
                 }
 
-                if( collisionInfo.current.floor.distance >= -core::ClimbLimit2ClickMin && collisionInfo.current.floor.distance < -core::SteppableHeight )
+                if( collisionInfo.mid.floor.distance >= -core::ClimbLimit2ClickMin && collisionInfo.mid.floor.distance < -core::SteppableHeight )
                 {
-                    const auto fr = getCurrentTime();
-                    if( fr < 27_frame || fr >= 45_frame)
+                    const auto fr = getCurrentFrame();
+                    if( fr < 27 || fr > 44 )
                     {
                         setAnimIdGlobal(loader::AnimationId::WALK_UP_STEP_RIGHT, 844);
                     }
@@ -121,12 +116,10 @@ namespace engine
                     }
                 }
 
-                if( !tryStartSlide(collisionInfo, nextHandler) )
+                if( !tryStartSlide(collisionInfo) )
                 {
                     placeOnFloor(collisionInfo);
                 }
-
-                return nextHandler;
             }
         };
     }

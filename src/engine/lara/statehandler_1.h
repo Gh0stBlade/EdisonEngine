@@ -5,6 +5,7 @@
 #include "engine/inputstate.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,134 +14,119 @@ namespace engine
         {
         public:
             explicit StateHandler_1(LaraNode& lara)
-                    : AbstractStateHandler( lara, LaraStateId::RunForward )
+                : AbstractStateHandler(lara, LaraStateId::RunForward)
             {
             }
 
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getHealth() <= 0 )
                 {
-                    setTargetState( LaraStateId::Death );
-                    return {};
+                    setTargetState(LaraStateId::Death);
+                    return;
                 }
 
                 if( getLevel().m_inputHandler->getInputState().roll )
                 {
-                    setAnimIdGlobal( loader::AnimationId::ROLL_BEGIN, 3857 );
-                    setTargetState( LaraStateId::Stop );
-                    return LaraStateId::RollForward;
+                    setAnimIdGlobal(loader::AnimationId::ROLL_BEGIN, 3857);
+                    setTargetState(LaraStateId::Stop);
+                    return;
+                }
+
+                if (getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left)
+                {
+                    subYRotationSpeed(2.25_deg, -8_deg);
+                    setZRotation(std::max(-11_deg, getRotation().Z - 1.5_deg));
+                }
+                else if (getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right)
+                {
+                    addYRotationSpeed(2.25_deg, 8_deg);
+                    setZRotation(std::min(+11_deg, getRotation().Z + 1.5_deg));
                 }
 
                 if( getLevel().m_inputHandler->getInputState().jump && !isFalling() )
                 {
-                    setTargetState( LaraStateId::JumpForward );
-                    return {};
+                    setTargetState(LaraStateId::JumpForward);
+                    return;
                 }
 
                 if( getLevel().m_inputHandler->getInputState().zMovement != AxisMovement::Forward )
                 {
-                    setTargetState( LaraStateId::Stop );
-                    return {};
+                    setTargetState(LaraStateId::Stop);
+                    return;
                 }
 
                 if( getLevel().m_inputHandler->getInputState().moveSlow )
-                    setTargetState( LaraStateId::WalkForward );
+                    setTargetState(LaraStateId::WalkForward);
                 else
-                    setTargetState( LaraStateId::RunForward );
-
-                return {};
+                    setTargetState(LaraStateId::RunForward);
             }
 
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& deltaTime) override
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
-                if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left )
-                {
-                    subYRotationSpeed( deltaTime, 2.25_deg, -8_deg );
-                    setZRotation( std::max( -11_deg, getRotation().Z - core::makeInterpolatedValue( +1.5_deg )
-                            .getScaled( deltaTime ) ) );
-                }
-                else if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right )
-                {
-                    addYRotationSpeed( deltaTime, 2.25_deg, 8_deg );
-                    setZRotation( std::min( +11_deg, getRotation().Z + core::makeInterpolatedValue( +1.5_deg )
-                            .getScaled( deltaTime ) ) );
-                }
-            }
-
-
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
-            {
-                collisionInfo.yAngle = getRotation().Y;
-                setMovementAngle( collisionInfo.yAngle );
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.passableFloorDistanceBottom = loader::HeightLimit;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.policyFlags |= CollisionInfo::SlopesAreWalls;
-                collisionInfo.initHeightInfo( getPosition(), getLevel(), core::ScalpHeight );
+                collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                auto nextHandler = stopIfCeilingBlocked( collisionInfo );
-                if( nextHandler )
-                    return nextHandler;
-                nextHandler = tryClimb( collisionInfo );
-                if( nextHandler )
-                    return nextHandler;
+                if( stopIfCeilingBlocked(collisionInfo) )
+                    return;
 
-                nextHandler = checkWallCollision( collisionInfo );
-                if( nextHandler.is_initialized() )
+                if( tryClimb(collisionInfo) )
+                    return;
+
+                if( checkWallCollision(collisionInfo) )
                 {
-                    setZRotation( 0_deg );
+                    setZRotation(0_deg);
                     if( collisionInfo.front.floor.slantClass == SlantClass::None
                         && collisionInfo.front.floor.distance < -core::ClimbLimit2ClickMax )
                     {
-                        nextHandler = LaraStateId::Unknown12;
-                        if( getCurrentTime() < 10_frame )
+                        if( getCurrentFrame() < 10 )
                         {
-                            setAnimIdGlobal( loader::AnimationId::WALL_SMASH_LEFT, 800 );
-                            return nextHandler;
+                            setAnimIdGlobal(loader::AnimationId::WALL_SMASH_LEFT, 800);
+                            return;
                         }
-                        if( getCurrentTime() >= 10_frame && getCurrentTime() < 22_frame )
+                        if( getCurrentFrame() >= 10 && getCurrentFrame() < 22 )
                         {
-                            setAnimIdGlobal( loader::AnimationId::WALL_SMASH_RIGHT, 815 );
-                            return nextHandler;
+                            setAnimIdGlobal(loader::AnimationId::WALL_SMASH_RIGHT, 815);
+                            return;
                         }
                     }
 
-                    setAnimIdGlobal( loader::AnimationId::STAY_SOLID, 185 );
+                    setAnimIdGlobal(loader::AnimationId::STAY_SOLID, 185);
                 }
 
-                if( collisionInfo.current.floor.distance > core::ClimbLimit2ClickMin )
+                if( collisionInfo.mid.floor.distance > core::ClimbLimit2ClickMin )
                 {
-                    setAnimIdGlobal( loader::AnimationId::FREE_FALL_FORWARD, 492 );
-                    setTargetState( LaraStateId::JumpForward );
-                    setFalling( true );
-                    setFallSpeed( core::makeInterpolatedValue( 0.0f ) );
-                    return LaraStateId::JumpForward;
+                    setAnimIdGlobal(loader::AnimationId::FREE_FALL_FORWARD, 492);
+                    setTargetState(LaraStateId::JumpForward);
+                    setFalling(true);
+                    setFallSpeed(0);
+                    return;
                 }
 
-                if( collisionInfo.current.floor.distance >= -core::ClimbLimit2ClickMin
-                    && collisionInfo.current.floor.distance < -core::SteppableHeight )
+                if( collisionInfo.mid.floor.distance >= -core::ClimbLimit2ClickMin
+                    && collisionInfo.mid.floor.distance < -core::SteppableHeight )
                 {
-                    if( getCurrentTime() >= 3_frame && getCurrentTime() < 15_frame )
+                    if( getCurrentFrame() >= 3 && getCurrentFrame() <= 14 )
                     {
-                        setAnimIdGlobal( loader::AnimationId::RUN_UP_STEP_LEFT, 837 );
+                        setAnimIdGlobal(loader::AnimationId::RUN_UP_STEP_LEFT, 837);
                     }
                     else
                     {
-                        setAnimIdGlobal( loader::AnimationId::RUN_UP_STEP_RIGHT, 830 );
+                        setAnimIdGlobal(loader::AnimationId::RUN_UP_STEP_RIGHT, 830);
                     }
                 }
 
-                if( !tryStartSlide( collisionInfo, nextHandler ) )
+                if( !tryStartSlide(collisionInfo) )
                 {
-                    if( collisionInfo.current.floor.distance > 50 )
-                        collisionInfo.current.floor.distance = 50;
-                    placeOnFloor( collisionInfo );
+                    moveY(std::min(collisionInfo.mid.floor.distance, 50));
                 }
-
-                return nextHandler;
             }
         };
     }

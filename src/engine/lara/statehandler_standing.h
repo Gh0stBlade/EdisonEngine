@@ -3,6 +3,7 @@
 #include "abstractstatehandler.h"
 #include "engine/collisioninfo.h"
 
+
 namespace engine
 {
     namespace lara
@@ -11,42 +12,41 @@ namespace engine
         {
         protected:
             explicit StateHandler_Standing(LaraNode& lara, LaraStateId id)
-                    : AbstractStateHandler(lara, id)
+                : AbstractStateHandler(lara, id)
             {
             }
 
+
         public:
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override final
+            void postprocessFrame(CollisionInfo& collisionInfo) override final
             {
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(false);
-                collisionInfo.yAngle = getRotation().Y;
-                setMovementAngle(collisionInfo.yAngle);
+                collisionInfo.facingAngle = getRotation().Y;
+                setMovementAngle(collisionInfo.facingAngle);
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.passableFloorDistanceBottom = core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 0;
                 collisionInfo.policyFlags |= CollisionInfo::SlopesAreWalls | CollisionInfo::SlopesArePits;
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
 
-                auto nextHandler = stopIfCeilingBlocked(collisionInfo);
-                if( nextHandler )
-                    return nextHandler;
+                if( stopIfCeilingBlocked(collisionInfo) )
+                    return;
 
-                if( collisionInfo.current.floor.distance <= 100 )
+                if( collisionInfo.mid.floor.distance <= 100 )
                 {
-                    if( !tryStartSlide(collisionInfo, nextHandler) )
+                    if( !tryStartSlide(collisionInfo) )
                     {
-                        applyCollisionFeedback(collisionInfo);
+                        applyShift(collisionInfo);
                         placeOnFloor(collisionInfo);
                     }
-                    return nextHandler;
+                    return;
                 }
 
                 setAnimIdGlobal(loader::AnimationId::FREE_FALL_FORWARD, 492);
                 setTargetState(LaraStateId::JumpForward);
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 setFalling(true);
-                return LaraStateId::JumpForward;
             }
         };
     }

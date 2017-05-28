@@ -2,6 +2,7 @@
 
 #include "statehandler_underwater.h"
 
+
 namespace engine
 {
     namespace lara
@@ -10,29 +11,25 @@ namespace engine
         {
         public:
             explicit StateHandler_13(LaraNode& lara)
-                    : StateHandler_Underwater(lara, LaraStateId::UnderwaterStop)
+                : StateHandler_Underwater(lara, LaraStateId::UnderwaterStop)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getHealth() < 0 )
                 {
                     setTargetState(LaraStateId::WaterDeath);
-                    return {};
+                    return;
                 }
 
-                handleDiveInput();
+                handleDiveRotationInput();
 
                 if( getLevel().m_inputHandler->getInputState().jump )
                     setTargetState(LaraStateId::UnderwaterForward);
 
-                return {};
-            }
-
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& deltaTimeMs) override
-            {
-                setFallSpeed(std::max(core::makeInterpolatedValue(0.0f), getFallSpeed() - core::makeInterpolatedValue(6.0f).getScaled(deltaTimeMs)));
+                setFallSpeed(std::max(0, getFallSpeed() - 6));
             }
         };
     }

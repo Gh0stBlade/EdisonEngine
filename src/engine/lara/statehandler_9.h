@@ -5,6 +5,7 @@
 #include "engine/laranode.h"
 #include "level/level.h"
 
+
 namespace engine
 {
     namespace lara
@@ -13,37 +14,33 @@ namespace engine
         {
         public:
             explicit StateHandler_9(LaraNode& lara)
-                    : AbstractStateHandler(lara, LaraStateId::FreeFall)
+                : AbstractStateHandler(lara, LaraStateId::FreeFall)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
-            {
-                return {};
-            }
 
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& deltaTime) override
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
-                dampenHorizontalSpeed(deltaTime, 0.05f);
-                if( getFallSpeed() > 154 )
+                if( getFallSpeed() >= core::DeadlyFallSpeedThreshold )
                 {
                     getLara().playSoundEffect(30);
                 }
+                dampenHorizontalSpeed(0.05f);
             }
 
-            boost::optional<LaraStateId> postprocessFrame(CollisionInfo& collisionInfo) override
+
+            void postprocessFrame(CollisionInfo& collisionInfo) override
             {
                 collisionInfo.passableFloorDistanceBottom = loader::HeightLimit;
                 collisionInfo.passableFloorDistanceTop = -core::ClimbLimit2ClickMin;
                 collisionInfo.neededCeilingDistance = 192;
-                collisionInfo.yAngle = getMovementAngle();
+                collisionInfo.facingAngle = getMovementAngle();
                 setFalling(true);
                 collisionInfo.initHeightInfo(getPosition(), getLevel(), core::ScalpHeight);
                 jumpAgainstWall(collisionInfo);
-                if( collisionInfo.current.floor.distance > 0 )
-                    return {};
+                if( collisionInfo.mid.floor.distance > 0 )
+                    return;
 
-                boost::optional<LaraStateId> nextHandler;
                 if( applyLandingDamage() )
                 {
                     setTargetState(LaraStateId::Death);
@@ -51,15 +48,12 @@ namespace engine
                 else
                 {
                     setTargetState(LaraStateId::Stop);
-                    nextHandler = LaraStateId::Stop;
                     setAnimIdGlobal(loader::AnimationId::LANDING_HARD, 358);
                 }
                 getLevel().stopSoundEffect(30);
-                setFallSpeed(core::makeInterpolatedValue(0.0f));
+                setFallSpeed(0);
                 placeOnFloor(collisionInfo);
                 setFalling(false);
-
-                return nextHandler;
             }
         };
     }

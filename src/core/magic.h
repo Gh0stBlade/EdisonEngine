@@ -2,8 +2,6 @@
 
 #include "loader/datatypes.h"
 
-#include <chrono>
-
 namespace core
 {
     constexpr int SteppableHeight = loader::QuarterSectorSize / 2;
@@ -11,33 +9,25 @@ namespace core
     constexpr int ClimbLimit2ClickMax = loader::QuarterSectorSize + ClimbLimit2ClickMin;
     constexpr int ClimbLimit3ClickMax = loader::QuarterSectorSize + ClimbLimit2ClickMax;
 
+    static_assert(SteppableHeight < ClimbLimit2ClickMin, "Constants wrong");
+    static_assert(ClimbLimit2ClickMin < ClimbLimit2ClickMax, "Constants wrong");
+    static_assert(ClimbLimit2ClickMax < ClimbLimit3ClickMax, "Constants wrong");
+
     constexpr int ScalpHeight = 762;
     constexpr int ScalpToHandsHeight = 160;
-    constexpr int JumpReachableHeight = 896 + loader::SectorSize;
+    constexpr int JumpReachableHeight = ClimbLimit3ClickMax + loader::SectorSize;
 
     constexpr int FreeFallSpeedThreshold = 131;
+    constexpr int DamageFallSpeedThreshold = 140;
+    constexpr int DeadlyFallSpeedThreshold = 154;
+
+    static_assert(FreeFallSpeedThreshold < DamageFallSpeedThreshold, "Constants wrong");
+    static_assert(DamageFallSpeedThreshold < DeadlyFallSpeedThreshold, "Constants wrong");
+
     constexpr int MaxGrabbableGradient = 60;
 
     constexpr int FrameRate = 30;
-    constexpr std::chrono::microseconds FrameTime = std::chrono::microseconds(std::chrono::seconds(1)) / FrameRate;
 
-    constexpr std::chrono::microseconds fromFrame(unsigned long long f)
-    {
-        return std::chrono::microseconds(std::chrono::seconds(f)) / core::FrameRate;
-    }
-
-    inline uint16_t toFrame(const std::chrono::microseconds& time)
-    {
-        return gsl::narrow<uint16_t>(time * FrameRate / std::chrono::microseconds(std::chrono::seconds(1)));
-    }
-
-    inline float toFloatFrame(const std::chrono::microseconds& time)
-    {
-        return gsl::narrow_cast<float>(time.count()) * FrameRate / std::chrono::microseconds(std::chrono::seconds(1)).count();
-    }
-}
-
-constexpr std::chrono::microseconds operator""_frame(unsigned long long f)
-{
-    return core::fromFrame(f);
+    constexpr int LaraAir = 1800;
+    constexpr int LaraHealth = 1000;
 }

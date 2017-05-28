@@ -2,6 +2,7 @@
 
 #include "statehandler_standing.h"
 
+
 namespace engine
 {
     namespace lara
@@ -10,37 +11,33 @@ namespace engine
         {
         public:
             explicit StateHandler_20(LaraNode& lara)
-                    : StateHandler_Standing(lara, LaraStateId::TurnFast)
+                : StateHandler_Standing(lara, LaraStateId::TurnFast)
             {
             }
 
-            boost::optional<LaraStateId> handleInputImpl(CollisionInfo& /*collisionInfo*/) override
+
+            void handleInput(CollisionInfo& /*collisionInfo*/) override
             {
                 if( getHealth() <= 0 )
                 {
                     setTargetState(LaraStateId::Stop);
-                    return {};
+                    return;
                 }
 
                 if( getYRotationSpeed() >= 0_deg )
                 {
                     setYRotationSpeed(8_deg);
                     if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Right )
-                        return {};
+                        return;
                 }
                 else
                 {
                     setYRotationSpeed(-8_deg);
                     if( getLevel().m_inputHandler->getInputState().xMovement == AxisMovement::Left )
-                        return {};
+                        return;
                 }
 
                 setTargetState(LaraStateId::Stop);
-                return {};
-            }
-
-            void animateImpl(CollisionInfo& /*collisionInfo*/, const std::chrono::microseconds& /*deltaTimeMs*/) override
-            {
             }
         };
     }

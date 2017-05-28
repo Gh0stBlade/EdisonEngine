@@ -1,11 +1,9 @@
 #pragma once
 
 #include "audio/sourcehandle.h"
-#include "core/interpolatedvalue.h"
 #include "engine/floordata/floordata.h"
 #include "engine/skeletalmodelnode.h"
 
-#include <chrono>
 #include <set>
 
 
@@ -69,12 +67,12 @@ namespace engine
 
             gsl::not_null<level::Level*> const m_level;
 
-            core::InterpolatedValue<float> m_fallSpeed{0.0f};
-            core::InterpolatedValue<float> m_horizontalSpeed{0.0f};
+            int m_fallSpeed{0};
+            int m_horizontalSpeed{0};
 
             bool m_falling = false; // flags2_08
 
-            long m_floorHeight = 0;
+            int m_floorHeight = 0;
 
             std::set<std::weak_ptr<audio::SourceHandle>, audio::WeakSourceHandleLessComparator> m_sounds;
 
@@ -109,12 +107,14 @@ namespace engine
                 float baseDiff;
             };
 
+
             Lighting m_lighting;
+
 
             enum class AnimCommandOpcode : uint16_t
             {
                 SetPosition = 1,
-                SetVelocity = 2,
+                StartFalling = 2,
                 EmptyHands = 3,
                 Kill = 4,
                 PlaySound = 5,
@@ -127,7 +127,7 @@ namespace engine
                      const std::string& name,
                      const gsl::not_null<const loader::Room*>& room,
                      const core::Angle& angle,
-                     const core::ExactTRCoordinates& position,
+                     const core::TRCoordinates& position,
                      const floordata::ActivationState& activationState,
                      bool hasProcessAnimCommandsOverride,
                      Characteristics characteristics,
@@ -136,8 +136,11 @@ namespace engine
 
             virtual ~ItemNode() = default;
 
+            void update() override;
 
-            const core::ExactTRCoordinates& getPosition() const noexcept
+            void applyMovement(bool forLara);
+
+            const core::TRCoordinates& getPosition() const noexcept
             {
                 return m_position.position;
             }
@@ -155,13 +158,13 @@ namespace engine
             }
 
 
-            long getFloorHeight() const noexcept
+            int getFloorHeight() const noexcept
             {
                 return m_floorHeight;
             }
 
 
-            void setFloorHeight(long h) noexcept
+            void setFloorHeight(int h) noexcept
             {
                 m_floorHeight = h;
             }
@@ -180,7 +183,7 @@ namespace engine
             }
 
 
-            void move(float dx, float dy, float dz)
+            void move(int dx, int dy, int dz)
             {
                 m_position.position.X += dx;
                 m_position.position.Y += dy;
@@ -188,37 +191,37 @@ namespace engine
             }
 
 
-            void moveX(float d)
+            void moveX(int d)
             {
                 m_position.position.X += d;
             }
 
 
-            void moveY(float d)
+            void moveY(int d)
             {
                 m_position.position.Y += d;
             }
 
 
-            void moveZ(float d)
+            void moveZ(int d)
             {
                 m_position.position.Z += d;
             }
 
 
-            void setX(float d)
+            void setX(int d)
             {
                 m_position.position.X = d;
             }
 
 
-            void setY(float d)
+            void setY(int d)
             {
                 m_position.position.Y = d;
             }
 
 
-            void setZ(float d)
+            void setZ(int d)
             {
                 m_position.position.Z = d;
             }
@@ -226,11 +229,11 @@ namespace engine
 
             void move(const glm::vec3& d)
             {
-                m_position.position += core::ExactTRCoordinates(d);
+                m_position.position += core::TRCoordinates(d);
             }
 
 
-            void  moveLocal(float dx, float dy, float dz)
+            void moveLocal(int dx, int dy, int dz)
             {
                 const auto sin = getRotation().Y.sin();
                 const auto cos = getRotation().Y.cos();
@@ -240,7 +243,7 @@ namespace engine
             }
 
 
-            void setPosition(const core::ExactTRCoordinates& pos)
+            void setPosition(const core::TRCoordinates& pos)
             {
                 m_position.position = pos;
             }
@@ -318,42 +321,42 @@ namespace engine
             }
 
 
-            void setFallSpeed(const core::InterpolatedValue<float>& spd)
+            void setFallSpeed(int spd)
             {
                 m_fallSpeed = spd;
             }
 
 
-            const core::InterpolatedValue<float>& getFallSpeed() const noexcept
+            int getFallSpeed() const noexcept
             {
                 return m_fallSpeed;
             }
 
 
-            void setHorizontalSpeed(const core::InterpolatedValue<float>& speed)
+            void setHorizontalSpeed(int speed)
             {
                 m_horizontalSpeed = speed;
             }
 
 
-            const core::InterpolatedValue<float>& getHorizontalSpeed() const
+            int getHorizontalSpeed() const
             {
                 return m_horizontalSpeed;
             }
 
 
-            void dampenHorizontalSpeed(const std::chrono::microseconds& deltaTime, float f)
+            void dampenHorizontalSpeed(float f)
             {
-                m_horizontalSpeed.sub(m_horizontalSpeed * f, deltaTime);
+                m_horizontalSpeed -= m_horizontalSpeed * f;
             }
 
 
-            virtual void patchFloor(const core::TRCoordinates& /*pos*/, long& /*y*/)
+            virtual void patchFloor(const core::TRCoordinates& /*pos*/, int& /*y*/)
             {
             }
 
 
-            virtual void patchCeiling(const core::TRCoordinates& /*pos*/, long& /*y*/)
+            virtual void patchCeiling(const core::TRCoordinates& /*pos*/, int& /*y*/)
             {
             }
 
@@ -364,24 +367,17 @@ namespace engine
             }
 
 
-            void onFrameChanged(FrameChangeType frameChangeType) override;
-
             void activate();
 
             void deactivate();
 
-            void update(const std::chrono::microseconds& deltaTime);
-
-            virtual void updateImpl(const std::chrono::microseconds& deltaTime, const boost::optional<FrameChangeType>& frameChangeType) = 0;
-
-
-            core::InterpolatedValue<float>& getHorizontalSpeed()
+            int getHorizontalSpeed()
             {
                 return m_horizontalSpeed;
             }
 
 
-            core::InterpolatedValue<float>& getFallSpeed() noexcept
+            int getFallSpeed() noexcept
             {
                 return m_fallSpeed;
             }
@@ -442,7 +438,7 @@ namespace engine
             }
 
 
-            void setRelativeOrientedPosition(const core::ExactTRCoordinates& offset, const ItemNode& target)
+            void setRelativeOrientedPosition(const core::TRCoordinates& offset, const ItemNode& target)
             {
                 setRotation(target.getRotation());
 
@@ -458,10 +454,10 @@ namespace engine
             {
                 m_lighting.baseDiff = 0;
 
-                if(m_darkness >= 0)
+                if( m_darkness >= 0 )
                 {
                     m_lighting.base = (m_darkness - 4096) / 8192.0f;
-                    if(m_lighting.base == 0)
+                    if( m_lighting.base == 0 )
                         m_lighting.base = 1;
                     return;
                 }
@@ -470,7 +466,7 @@ namespace engine
                 BOOST_ASSERT(roomAmbient >= 0 && roomAmbient <= 1);
                 m_lighting.base = roomAmbient;
 
-                if(m_position.room->lights.empty())
+                if( m_position.room->lights.empty() )
                 {
                     m_lighting.base = 1;
                     m_lighting.baseDiff = 0;
@@ -478,18 +474,17 @@ namespace engine
                 }
 
                 float maxBrightness = 0;
-                const auto bboxCtr = m_position.position.toRenderSystem() + getBoundingBox().getCenter();
-                for(const auto& light : m_position.room->lights)
+                const auto bboxCtr = m_position.position + getBoundingBox().getCenter();
+                for( const auto& light : m_position.room->lights )
                 {
                     auto radiusSq = light.radius / 4096.0f;
                     radiusSq *= radiusSq;
 
-                    auto distanceSq = glm::length(bboxCtr - light.position.toRenderSystem());
-                    distanceSq /= 4096.0f;
+                    auto distanceSq = bboxCtr.distanceTo(light.position) / 4096.0f;
                     distanceSq *= distanceSq;
 
                     const auto lightBrightness = roomAmbient + radiusSq * light.getBrightness() / (radiusSq + distanceSq);
-                    if(lightBrightness > maxBrightness)
+                    if( lightBrightness > maxBrightness )
                     {
                         maxBrightness = lightBrightness;
                         m_lighting.position = light.position.toRenderSystem();
@@ -499,20 +494,21 @@ namespace engine
                 m_lighting.base = (roomAmbient + maxBrightness) / 2;
                 m_lighting.baseDiff = (maxBrightness - m_lighting.base);
 
-                if(m_lighting.base == 0 && m_lighting.baseDiff == 0)
+                if( m_lighting.base == 0 && m_lighting.baseDiff == 0 )
                     m_lighting.base = 1;
             }
+
 
             static const ItemNode* findBaseItemNode(const gameplay::Node& node)
             {
                 const ItemNode* item = nullptr;
 
                 auto n = &node;
-                while(true)
+                while( true )
                 {
                     item = dynamic_cast<const ItemNode*>(n);
 
-                    if(item != nullptr || n->getParent().expired())
+                    if( item != nullptr || n->getParent().expired() )
                         break;
 
                     n = n->getParent().lock().get();
@@ -521,11 +517,12 @@ namespace engine
                 return item;
             }
 
+
             static void lightBaseBinder(const gameplay::Node& node, gameplay::gl::Program::ActiveUniform& uniform)
             {
                 const ItemNode* item = findBaseItemNode(node);
 
-                if(item == nullptr)
+                if( item == nullptr )
                 {
                     uniform.set(1.0f);
                     return;
@@ -534,11 +531,12 @@ namespace engine
                 uniform.set(item->m_lighting.base);
             };
 
+
             static void lightBaseDiffBinder(const gameplay::Node& node, gameplay::gl::Program::ActiveUniform& uniform)
             {
                 const ItemNode* item = findBaseItemNode(node);
 
-                if(item == nullptr)
+                if( item == nullptr )
                 {
                     uniform.set(1.0f);
                     return;
@@ -547,13 +545,14 @@ namespace engine
                 uniform.set(item->m_lighting.baseDiff);
             };
 
+
             static void lightPositionBinder(const gameplay::Node& node, gameplay::gl::Program::ActiveUniform& uniform)
             {
                 const ItemNode* item = findBaseItemNode(node);
 
-                if(item == nullptr)
+                if( item == nullptr )
                 {
-                    static const glm::vec3 invalidPos{ std::numeric_limits<float>::quiet_NaN() };
+                    static const glm::vec3 invalidPos{std::numeric_limits<float>::quiet_NaN()};
                     uniform.set(invalidPos);
                     return;
                 }
@@ -562,43 +561,42 @@ namespace engine
             };
 
         protected:
-            bool updateActivationTimeout(const std::chrono::microseconds& deltaTime)
+            bool updateActivationTimeout()
             {
                 if( !m_activationState.isFullyActivated() )
                 {
                     return m_activationState.isInverted();
                 }
 
-                if( m_activationState.getTimeout() == std::chrono::microseconds::zero() )
+                if( m_activationState.getTimeout() == 0 )
                 {
                     return !m_activationState.isInverted();
                 }
 
-                if( m_activationState.getTimeout() < std::chrono::microseconds::zero() )
+                if( m_activationState.getTimeout() < 0 )
                 {
                     return m_activationState.isInverted();
                 }
 
-                BOOST_ASSERT( deltaTime > std::chrono::microseconds::zero() );
-                m_activationState.setTimeout(m_activationState.getTimeout() - deltaTime);
-                if( m_activationState.getTimeout() <= std::chrono::microseconds::zero() )
-                    m_activationState.setTimeout( std::chrono::microseconds(-1) );
+                m_activationState.setTimeout(m_activationState.getTimeout() - 1);
+                if( m_activationState.getTimeout() <= 0 )
+                    m_activationState.setTimeout(-1);
 
                 return !m_activationState.isInverted();
             }
 
 
-            bool alignTransformClamped(const glm::vec3& targetPos, const core::TRRotation& targetRot, float maxDistance, const core::Angle& maxAngle)
+            bool alignTransformClamped(const glm::vec3& targetPos, const core::TRRotation& targetRot, int maxDistance, const core::Angle& maxAngle)
             {
                 auto d = targetPos - getPosition().toRenderSystem();
                 const auto dist = glm::length(d);
                 if( maxDistance < dist )
                 {
-                    move(maxDistance * glm::normalize(d));
+                    move(static_cast<float>(maxDistance) * glm::normalize(d));
                 }
                 else
                 {
-                    setPosition(core::ExactTRCoordinates(targetPos));
+                    setPosition(core::TRCoordinates(targetPos));
                 }
 
                 core::TRRotation phi = targetRot - getRotation();

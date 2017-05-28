@@ -1,22 +1,15 @@
 #include "bat.h"
 
-#include "engine/heightinfo.h"
 #include "level/level.h"
 #include "engine/laranode.h"
 #include "engine/ai/ai.h"
-
-#include <boost/range/adaptors.hpp>
-
 
 namespace engine
 {
     namespace items
     {
-        void Bat::updateImpl(const std::chrono::microseconds& /*deltaTime*/, const boost::optional<FrameChangeType>& frameChangeType)
+        void Bat::update()
         {
-            if( !frameChangeType.is_initialized() )
-                return;
-
             if( m_triggerState == TriggerState::Locked )
             {
                 m_triggerState = TriggerState::Enabled;
@@ -70,7 +63,7 @@ namespace engine
             else
             {
                 setTargetState(Circling);
-                setHorizontalSpeed(core::makeInterpolatedValue(0.0f));
+                setHorizontalSpeed(0);
                 setFalling(true);
             }
             animateCreature(rotationToMoveTarget, 0_deg);

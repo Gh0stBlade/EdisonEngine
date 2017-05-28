@@ -6,11 +6,28 @@ namespace engine
 {
     namespace items
     {
-        void TallBlock::onFrameChanged(FrameChangeType frameChangeType)
+        void TallBlock::update()
         {
-            ItemNode::onFrameChanged( frameChangeType );
+            if(updateActivationTimeout())
+            {
+                if(getCurrentState() == 0)
+                {
+                    loader::Room::patchHeightsForBlock(*this, 2 * loader::SectorSize);
+                    setTargetState(1);
+                }
+            }
+            else
+            {
+                if(getCurrentState() == 1)
+                {
+                    loader::Room::patchHeightsForBlock(*this, 2 * loader::SectorSize);
+                    setTargetState(0);
+                }
+            }
+
+            ItemNode::update();
             auto room = getCurrentRoom();
-            getLevel().findRealFloorSector( getPosition().toInexact(), &room );
+            getLevel().findRealFloorSector( getPosition(), &room );
             setCurrentRoom( room );
 
             if( m_triggerState != engine::items::TriggerState::Activated )
@@ -19,8 +36,8 @@ namespace engine
             m_triggerState = engine::items::TriggerState::Enabled;
             loader::Room::patchHeightsForBlock( *this, -2 * loader::SectorSize );
             auto pos = getPosition();
-            pos.X = std::floor( pos.X / loader::SectorSize ) * loader::SectorSize + loader::SectorSize / 2;
-            pos.Z = std::floor( pos.Z / loader::SectorSize ) * loader::SectorSize + loader::SectorSize / 2;
+            pos.X = ( pos.X / loader::SectorSize ) * loader::SectorSize + loader::SectorSize / 2;
+            pos.Z = ( pos.Z / loader::SectorSize ) * loader::SectorSize + loader::SectorSize / 2;
             setPosition( pos );
         }
     }

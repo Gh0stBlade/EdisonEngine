@@ -4,19 +4,13 @@ set( GAMEPLAY_SRC
      src/BoundingBox.h
      src/Camera.cpp
      src/Camera.h
-     src/Drawable.cpp
      src/Drawable.h
      src/ShaderProgram.cpp
      src/ShaderProgram.h
-     src/FileSystem.cpp
-     src/FileSystem.h
-     src/Font.cpp
-     src/Font.h
      src/Frustum.cpp
      src/Frustum.h
      src/Game.cpp
      src/Game.h
-     src/Image.h
      src/Material.cpp
      src/Material.h
      src/MaterialParameter.cpp
@@ -38,7 +32,6 @@ set( GAMEPLAY_SRC
      src/RenderContext.h
      src/RenderState.cpp
      src/RenderState.h
-     src/Scene.cpp
      src/Scene.h
      src/ScreenOverlay.cpp
      src/ScreenOverlay.h
@@ -58,8 +51,12 @@ set( GAMEPLAY_SRC
      src/gl/typetraits.h
      src/gl/vertexarray.h
      src/gl/vertexbuffer.h
-     src/ext/vertexattribute.h
+     src/gl/debuggroup.h
+     src/ext/font.cpp
+     src/ext/font.h
+     src/ext/image.h
      src/ext/structuredvertexbuffer.h
+     src/ext/vertexattribute.h
 )
 
 find_package(OpenGL REQUIRED)
